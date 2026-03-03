@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import { resolve } from 'path'
+import { builtinModules } from 'module'
 
 export default defineConfig({
   plugins: [
@@ -13,8 +14,21 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
+            lib: {
+              entry: 'src/main/index.ts',
+              formats: ['es']
+            },
             rollupOptions: {
-              external: ['electron', 'electron-store']
+              external: [
+                'electron',
+                ...builtinModules,
+                ...builtinModules.map(m => `node:${m}`),
+                'pdf-parse',
+                'mammoth'
+              ],
+              output: {
+                entryFileNames: '[name].js'
+              }
             }
           }
         }
@@ -26,7 +40,19 @@ export default defineConfig({
         },
         vite: {
           build: {
-            outDir: 'dist-electron'
+            outDir: 'dist-electron',
+            lib: {
+              entry: 'src/main/preload.ts',
+              formats: ['cjs'],
+              fileName: () => 'preload.js'
+            },
+            rollupOptions: {
+              external: ['electron'],
+              output: {
+                format: 'cjs',
+                entryFileNames: 'preload.js'
+              }
+            }
           }
         }
       }

@@ -2,6 +2,7 @@ import { app, BrowserWindow, nativeTheme } from 'electron'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { registerAllHandlers } from './ipc/handlers.js'
 
 // ESM compatibility: get __dirname equivalent
 const __filename = fileURLToPath(import.meta.url)
@@ -99,6 +100,9 @@ function saveWindowBounds() {
 
 // App lifecycle
 app.whenReady().then(() => {
+  // Register IPC handlers
+  registerAllHandlers()
+
   createWindow()
 
   app.on('activate', () => {

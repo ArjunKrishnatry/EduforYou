@@ -10,6 +10,13 @@ import {
 } from 'lucide-react'
 import { useUIStore, useSemesterStore } from '../../store'
 
+type View = 'dashboard' | 'add-course' | 'calendar' | 'settings'
+
+interface SidebarProps {
+  currentView: View
+  onNavigate: (view: View) => void
+}
+
 interface NavItemProps {
   icon: React.ReactNode
   label: string
@@ -38,10 +45,9 @@ function NavItem({ icon, label, isActive, collapsed, onClick }: NavItemProps) {
   )
 }
 
-export function Sidebar() {
+export function Sidebar({ currentView, onNavigate }: SidebarProps) {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
-  const { semesters, currentSemesterId, setCurrentSemester } = useSemesterStore()
-  const [activeView, setActiveView] = React.useState('dashboard')
+  const { semesters } = useSemesterStore()
 
   const starredSemester = semesters.find(s => s.isStarred)
 
@@ -72,16 +78,16 @@ export function Sidebar() {
         <NavItem
           icon={<LayoutDashboard size={20} />}
           label="Dashboard"
-          isActive={activeView === 'dashboard'}
+          isActive={currentView === 'dashboard'}
           collapsed={sidebarCollapsed}
-          onClick={() => setActiveView('dashboard')}
+          onClick={() => onNavigate('dashboard')}
         />
         <NavItem
           icon={<Calendar size={20} />}
           label="Calendar"
-          isActive={activeView === 'calendar'}
+          isActive={currentView === 'calendar'}
           collapsed={sidebarCollapsed}
-          onClick={() => setActiveView('calendar')}
+          onClick={() => onNavigate('calendar')}
         />
 
         {/* Courses Section */}
@@ -91,7 +97,11 @@ export function Sidebar() {
               <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Courses
               </span>
-              <button className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+              <button
+                onClick={() => onNavigate('add-course')}
+                className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                title="Add course"
+              >
                 <Plus size={14} />
               </button>
             </div>
@@ -110,6 +120,7 @@ export function Sidebar() {
             icon={<BookOpen size={20} />}
             label="Courses"
             collapsed={sidebarCollapsed}
+            onClick={() => onNavigate('add-course')}
           />
         )}
       </nav>
@@ -131,7 +142,9 @@ export function Sidebar() {
         <NavItem
           icon={<Settings size={20} />}
           label="Settings"
+          isActive={currentView === 'settings'}
           collapsed={sidebarCollapsed}
+          onClick={() => onNavigate('settings')}
         />
       </div>
     </aside>

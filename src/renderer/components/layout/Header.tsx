@@ -1,19 +1,39 @@
 import React from 'react'
-import { Bell, Search } from 'lucide-react'
+import { Bell, Search, Plus, ArrowLeft } from 'lucide-react'
 import { useSemesterStore } from '../../store'
 
-export function Header() {
+type View = 'dashboard' | 'add-course' | 'calendar' | 'settings'
+
+interface HeaderProps {
+  currentView: View
+  onAddCourse: () => void
+}
+
+export function Header({ currentView, onAddCourse }: HeaderProps) {
   const { semesters, currentSemesterId } = useSemesterStore()
   const currentSemester = semesters.find(s => s.id === currentSemesterId)
+
+  const getTitle = () => {
+    switch (currentView) {
+      case 'add-course':
+        return 'Add Course'
+      case 'calendar':
+        return 'Calendar'
+      case 'settings':
+        return 'Settings'
+      default:
+        return 'Dashboard'
+    }
+  }
 
   return (
     <header className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-surface-dark">
       {/* Breadcrumb / Title */}
       <div className="flex items-center gap-2">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Dashboard
+          {getTitle()}
         </h2>
-        {currentSemester && (
+        {currentView === 'dashboard' && currentSemester && (
           <>
             <span className="text-gray-400">/</span>
             <span className="text-gray-600 dark:text-gray-400">
@@ -25,6 +45,17 @@ export function Header() {
 
       {/* Actions */}
       <div className="flex items-center gap-2">
+        {/* Add Course Button (only on dashboard) */}
+        {currentView === 'dashboard' && (
+          <button
+            onClick={onAddCourse}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus size={16} />
+            <span>Add Course</span>
+          </button>
+        )}
+
         {/* Search - placeholder for future */}
         <button className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <Search size={20} />
