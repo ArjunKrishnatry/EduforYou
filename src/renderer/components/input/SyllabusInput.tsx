@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react'
-import { FileText, Type, ArrowRight, AlertCircle } from 'lucide-react'
+import React, { useState, useCallback, useEffect } from 'react'
+import { FileText, Type, ArrowRight, AlertCircle, CheckCircle, Settings } from 'lucide-react'
 import { TextPasteArea } from './TextPasteArea'
 import { FileUploader } from './FileUploader'
 import { useSemesterStore } from '../../store'
@@ -15,21 +15,60 @@ interface UploadedFile {
   error?: string
 }
 
-interface SyllabusInputProps {
-  onAnalyze: (text: string, courseName: string, semesterId: string) => void
-  isAnalyzing?: boolean
+interface AnalysisResult {
+  courseName: string
+  courseCode?: string
+  instructor?: {
+    name: string
+    email?: string
+  }
+  assignments: Array<{
+    title: string
+    type: string
+    dueDate?: string
+    dueDateRaw?: string
+    weight?: number
+  }>
+  gradeWeights: Array<{
+    category: string
+    weight: number
+  }>
+  materials: Array<{
+    title: string
+    isRequired: boolean
+  }>
 }
 
-export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputProps) {
+interface SyllabusInputProps {
+  onAnalyzeComplete: (result: AnalysisResult, courseName: string, semesterId: string) => void
+  onOpenSettings: () => void
+}
+
+export function SyllabusInput({ onAnalyzeComplete, onOpenSettings }: SyllabusInputProps) {
   const [mode, setMode] = useState<InputMode>('upload')
   const [pastedText, setPastedText] = useState('')
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [courseName, setCourseName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isProcessingFiles, setIsProcessingFiles] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null)
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
 
   const { semesters, currentSemesterId } = useSemesterStore()
   const [selectedSemesterId, setSelectedSemesterId] = useState(currentSemesterId || '')
+
+  const selectedSemester = semesters.find(s => s.id === selectedSemesterId)
+
+  // Check for API key on mount
+  useEffect(() => {
+    checkApiKey()
+  }, [])
+
+  const checkApiKey = async () => {
+    const result = await window.electronAPI.hasApiKey()
+    setHasApiKey(result.hasKey)
+  }
 
   // Handle file selection via dialog
   const handleBrowse = useCallback(async () => {
@@ -47,8 +86,8 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
   const handleFilesAdded = useCallback(async (paths: string[]) => {
     setError(null)
     setIsProcessingFiles(true)
+    setAnalysisResult(null)
 
-    // Add files with pending status
     const newFiles: UploadedFile[] = paths.map((path) => ({
       path,
       name: path.split('/').pop() || path,
@@ -58,7 +97,6 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
 
     setFiles((prev) => [...prev, ...newFiles])
 
-    // Parse each file
     for (const file of newFiles) {
       setFiles((prev) =>
         prev.map((f) =>
@@ -105,12 +143,11 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
     setIsProcessingFiles(false)
   }, [])
 
-  // Handle file removal
   const handleFileRemove = useCallback((path: string) => {
     setFiles((prev) => prev.filter((f) => f.path !== path))
+    setAnalysisResult(null)
   }, [])
 
-  // Get combined text from all sources
   const getCombinedText = (): string => {
     if (mode === 'paste') {
       return pastedText.trim()
@@ -121,16 +158,14 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
 
       if (parsedTexts.length === 0) return ''
       if (parsedTexts.length === 1) return parsedTexts[0]
-
-      // Merge multiple files with separator
       return parsedTexts.join('\n\n--- Next Document ---\n\n')
     }
   }
 
-  // Check if ready to analyze
   const canAnalyze = (): boolean => {
     if (!courseName.trim()) return false
     if (!selectedSemesterId) return false
+    if (!hasApiKey) return false
 
     const text = getCombinedText()
     if (!text || text.length < 50) return false
@@ -144,12 +179,32 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
     return true
   }
 
-  // Handle analyze button
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!canAnalyze()) return
 
+    setIsAnalyzing(true)
+    setError(null)
+    setAnalysisResult(null)
+
     const text = getCombinedText()
-    onAnalyze(text, courseName.trim(), selectedSemesterId)
+
+    try {
+      const result = await window.electronAPI.analyzeSyllabus(text, {
+        semesterStartDate: selectedSemester?.startDate,
+        courseName: courseName.trim()
+      })
+
+      if (result.success && result.data) {
+        setAnalysisResult(result.data)
+        onAnalyzeComplete(result.data, courseName.trim(), selectedSemesterId)
+      } else {
+        setError(result.error || 'Analysis failed')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Analysis failed')
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   const textLength = getCombinedText().length
@@ -162,6 +217,30 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
       <p className="text-gray-600 dark:text-gray-400 mb-6">
         Upload your syllabus or paste the text to extract assignments and deadlines.
       </p>
+
+      {/* API Key Warning */}
+      {hasApiKey === false && (
+        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-yellow-500 mt-0.5" size={20} />
+            <div className="flex-1">
+              <p className="font-medium text-yellow-800 dark:text-yellow-200">
+                API Key Required
+              </p>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                You need to configure your Groq API key to analyze syllabi.
+              </p>
+              <button
+                onClick={onOpenSettings}
+                className="mt-2 text-sm font-medium text-yellow-800 dark:text-yellow-200 hover:underline inline-flex items-center gap-1"
+              >
+                <Settings size={14} />
+                Open Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Course name input */}
       <div className="mb-6">
@@ -190,7 +269,7 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
           <option value="">Select a semester...</option>
           {semesters.map((sem) => (
             <option key={sem.id} value={sem.id}>
-              {sem.name}
+              {sem.name} (starts {new Date(sem.startDate).toLocaleDateString()})
             </option>
           ))}
         </select>
@@ -204,12 +283,12 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
       {/* Input mode toggle */}
       <div className="flex gap-2 mb-4">
         <button
-          onClick={() => setMode('upload')}
+          onClick={() => { setMode('upload'); setAnalysisResult(null) }}
           className={`
             flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-colors
             ${mode === 'upload'
               ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
             }
           `}
         >
@@ -217,12 +296,12 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
           <span className="font-medium">Upload Files</span>
         </button>
         <button
-          onClick={() => setMode('paste')}
+          onClick={() => { setMode('paste'); setAnalysisResult(null) }}
           className={`
             flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-colors
             ${mode === 'paste'
               ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'
             }
           `}
         >
@@ -244,7 +323,7 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
         ) : (
           <TextPasteArea
             value={pastedText}
-            onChange={setPastedText}
+            onChange={(text) => { setPastedText(text); setAnalysisResult(null) }}
           />
         )}
       </div>
@@ -258,16 +337,53 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
       )}
 
       {/* Text preview info */}
-      {textLength > 0 && (
+      {textLength > 0 && !analysisResult && (
         <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <p className="text-sm text-gray-600 dark:text-gray-400">
             <strong>Ready to analyze:</strong> {textLength.toLocaleString()} characters
-            {textLength > 15000 && (
+            {textLength > 10000 && (
               <span className="ml-2 text-orange-500">
                 (will be processed in chunks)
               </span>
             )}
           </p>
+        </div>
+      )}
+
+      {/* Analysis Result Preview */}
+      {analysisResult && (
+        <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <div className="flex items-center gap-2 mb-3">
+            <CheckCircle className="text-green-500" size={20} />
+            <span className="font-medium text-green-700 dark:text-green-300">
+              Analysis Complete!
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">Assignments found</p>
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                {analysisResult.assignments?.length || 0}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">Materials</p>
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                {analysisResult.materials?.length || 0}
+              </p>
+            </div>
+            {analysisResult.instructor?.name && (
+              <div className="col-span-2">
+                <p className="text-gray-500 dark:text-gray-400">Instructor</p>
+                <p className="font-medium text-gray-900 dark:text-white">
+                  {analysisResult.instructor.name}
+                  {analysisResult.instructor.email && (
+                    <span className="text-gray-500 ml-2">({analysisResult.instructor.email})</span>
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -286,7 +402,12 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
         {isAnalyzing ? (
           <>
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            <span>Analyzing...</span>
+            <span>Analyzing with AI...</span>
+          </>
+        ) : analysisResult ? (
+          <>
+            <CheckCircle size={20} />
+            <span>Course Added!</span>
           </>
         ) : (
           <>
@@ -298,7 +419,9 @@ export function SyllabusInput({ onAnalyze, isAnalyzing = false }: SyllabusInputP
 
       {/* Help text */}
       <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        AI will extract assignments, exams, due dates, and grade weights from your syllabus.
+        {hasApiKey
+          ? 'AI will extract assignments, exams, due dates, and grade weights.'
+          : 'Configure your Groq API key in Settings to enable analysis.'}
       </p>
     </div>
   )

@@ -24,7 +24,8 @@ export default defineConfig({
                 ...builtinModules,
                 ...builtinModules.map(m => `node:${m}`),
                 'pdf-parse',
-                'mammoth'
+                'mammoth',
+                'groq-sdk'
               ],
               output: {
                 entryFileNames: '[name].js'

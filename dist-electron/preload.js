@@ -17,5 +17,21 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   },
   chunkText: (text, maxChunkSize) => {
     return electron.ipcRenderer.invoke("file:chunk", text, maxChunkSize);
+  },
+  // LLM operations
+  saveApiKey: (apiKey) => {
+    return electron.ipcRenderer.invoke("llm:saveApiKey", apiKey);
+  },
+  hasApiKey: () => {
+    return electron.ipcRenderer.invoke("llm:hasApiKey");
+  },
+  deleteApiKey: () => {
+    return electron.ipcRenderer.invoke("llm:deleteApiKey");
+  },
+  testConnection: () => {
+    return electron.ipcRenderer.invoke("llm:testConnection");
+  },
+  analyzeSyllabus: (text, options) => {
+    return electron.ipcRenderer.invoke("llm:analyze", text, options);
   }
 });

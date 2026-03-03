@@ -1,2 +1,37 @@
+# Dependencies
 node_modules/
+
+# Build outputs
+dist/
+dist-electron/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+
+# Electron
+release/
+*.dmg
+*.exe
+*.AppImage
+
+# Secure data (API keys)
+secure-keys.enc
+
+# Plan file
 IMPLEMENTATION_PLAN.md

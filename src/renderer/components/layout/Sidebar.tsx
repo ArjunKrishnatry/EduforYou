@@ -15,6 +15,7 @@ type View = 'dashboard' | 'add-course' | 'calendar' | 'settings'
 interface SidebarProps {
   currentView: View
   onNavigate: (view: View) => void
+  onOpenSettings?: () => void
 }
 
 interface NavItemProps {
@@ -45,7 +46,7 @@ function NavItem({ icon, label, isActive, collapsed, onClick }: NavItemProps) {
   )
 }
 
-export function Sidebar({ currentView, onNavigate }: SidebarProps) {
+export function Sidebar({ currentView, onNavigate, onOpenSettings }: SidebarProps) {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
   const { semesters } = useSemesterStore()
 
@@ -144,7 +145,7 @@ export function Sidebar({ currentView, onNavigate }: SidebarProps) {
           label="Settings"
           isActive={currentView === 'settings'}
           collapsed={sidebarCollapsed}
-          onClick={() => onNavigate('settings')}
+          onClick={() => onOpenSettings?.()}
         />
       </div>
     </aside>
