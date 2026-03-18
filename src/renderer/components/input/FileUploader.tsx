@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import { useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, File, X, FileText, AlertCircle } from 'lucide-react'
 
@@ -59,12 +59,6 @@ export function FileUploader({
     noClick: true, // We'll handle click via onBrowse
     noKeyboard: true,
   })
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
 
   const getFileIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase()

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Clipboard, X } from 'lucide-react'
 
 interface TextPasteAreaProps {

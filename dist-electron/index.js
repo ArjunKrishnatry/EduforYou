@@ -1,139 +1,122 @@
-import { ipcMain, BrowserWindow, dialog, safeStorage, app, nativeTheme } from "electron";
-import { extname, basename, join, dirname } from "path";
-import { fileURLToPath } from "url";
-import { writeFileSync, existsSync, readFileSync, mkdirSync } from "fs";
-import { readFile } from "fs/promises";
-import { createRequire } from "module";
-import Groq from "groq-sdk";
-const require$1 = createRequire(import.meta.url);
-const pdfParse = require$1("pdf-parse");
-const mammoth = require$1("mammoth");
-async function parsePDF(filePath) {
-  const buffer = await readFile(filePath);
-  const data = await pdfParse(buffer);
-  return data.text;
+import { ipcMain as a, BrowserWindow as m, dialog as S, safeStorage as v, app as f, nativeTheme as b } from "electron";
+import { extname as W, basename as _, join as g, dirname as O } from "path";
+import { fileURLToPath as j } from "url";
+import { writeFileSync as d, existsSync as h, readFileSync as C, mkdirSync as T } from "fs";
+import { readFile as I } from "fs/promises";
+import { createRequire as J } from "module";
+import L from "groq-sdk";
+const F = J(import.meta.url), Y = F("pdf-parse"), U = F("mammoth");
+async function B(e) {
+  const t = await I(e);
+  return (await Y(t)).text;
 }
-async function parseDOCX(filePath) {
-  const result = await mammoth.extractRawText({ path: filePath });
-  return result.value;
+async function H(e) {
+  return (await U.extractRawText({ path: e })).value;
 }
-async function parseTXT(filePath) {
-  const content = await readFile(filePath, "utf-8");
-  return content;
+async function z(e) {
+  return await I(e, "utf-8");
 }
-async function parseFile(filePath) {
-  const ext = extname(filePath).toLowerCase();
-  switch (ext) {
+async function P(e) {
+  const t = W(e).toLowerCase();
+  switch (t) {
     case ".pdf":
-      const pdfText = await parsePDF(filePath);
-      const estimatedPages = Math.ceil(pdfText.length / 3e3);
-      return { text: pdfText, pages: estimatedPages };
+      const s = await B(e), n = Math.ceil(s.length / 3e3);
+      return { text: s, pages: n };
     case ".docx":
     case ".doc":
-      const docText = await parseDOCX(filePath);
-      return { text: docText };
+      return { text: await H(e) };
     case ".txt":
     case ".md":
-      const txtText = await parseTXT(filePath);
-      return { text: txtText };
+      return { text: await z(e) };
     default:
-      throw new Error(`Unsupported file type: ${ext}`);
+      throw new Error(`Unsupported file type: ${t}`);
   }
 }
-function chunkText(text, maxChunkSize = 12e3, overlap = 500) {
-  if (text.length <= maxChunkSize) {
-    return [text];
-  }
-  const chunks = [];
-  let start = 0;
-  while (start < text.length) {
-    let end = start + maxChunkSize;
-    if (end < text.length) {
-      const paragraphBreak = text.lastIndexOf("\n\n", end);
-      if (paragraphBreak > start + maxChunkSize / 2) {
-        end = paragraphBreak + 2;
-      } else {
-        const sentenceBreak = text.lastIndexOf(". ", end);
-        if (sentenceBreak > start + maxChunkSize / 2) {
-          end = sentenceBreak + 2;
-        }
+function R(e, t = 12e3, s = 500) {
+  if (e.length <= t)
+    return [e];
+  const n = [];
+  let r = 0;
+  for (; r < e.length; ) {
+    let o = r + t;
+    if (o < e.length) {
+      const l = e.lastIndexOf(`
+
+`, o);
+      if (l > r + t / 2)
+        o = l + 2;
+      else {
+        const u = e.lastIndexOf(". ", o);
+        u > r + t / 2 && (o = u + 2);
       }
     }
-    chunks.push(text.slice(start, end));
-    start = end - overlap;
+    n.push(e.slice(r, o)), r = o - s;
   }
-  return chunks;
+  return n;
 }
-function mergeTexts(texts) {
-  return texts.join("\n\n---\n\n");
+function G(e) {
+  return e.join(`
+
+---
+
+`);
 }
-function registerFileHandlers() {
-  ipcMain.handle("file:select", async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showOpenDialog(win, {
+function K() {
+  a.handle("file:select", async (e) => {
+    const t = m.fromWebContents(e.sender), s = await S.showOpenDialog(t, {
       properties: ["openFile", "multiSelections"],
       filters: [
         { name: "Documents", extensions: ["pdf", "docx", "doc", "txt", "md"] }
       ]
     });
-    if (result.canceled || result.filePaths.length === 0) {
-      return null;
-    }
-    return result.filePaths;
-  });
-  ipcMain.handle("file:parse", async (_event, filePath) => {
-    console.log("Parsing file:", filePath);
+    return s.canceled || s.filePaths.length === 0 ? null : s.filePaths;
+  }), a.handle("file:parse", async (e, t) => {
+    console.log("Parsing file:", t);
     try {
-      const { text, pages } = await parseFile(filePath);
-      console.log("Parse success:", text.length, "chars");
-      return {
-        success: true,
-        fileName: basename(filePath),
-        text,
-        pages,
-        charCount: text.length
+      const { text: s, pages: n } = await P(t);
+      return console.log("Parse success:", s.length, "chars"), {
+        success: !0,
+        fileName: _(t),
+        text: s,
+        pages: n,
+        charCount: s.length
       };
-    } catch (error) {
-      console.error("Parse error:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+    } catch (s) {
+      return console.error("Parse error:", s), {
+        success: !1,
+        error: s instanceof Error ? s.message : "Unknown error"
       };
     }
-  });
-  ipcMain.handle("file:parseMultiple", async (_event, filePaths) => {
-    console.log("Parsing multiple files:", filePaths);
+  }), a.handle("file:parseMultiple", async (e, t) => {
+    console.log("Parsing multiple files:", t);
     try {
-      const results = await Promise.all(
-        filePaths.map(async (path) => {
-          const { text } = await parseFile(path);
-          return { fileName: basename(path), text };
+      const s = await Promise.all(
+        t.map(async (r) => {
+          const { text: o } = await P(r);
+          return { fileName: _(r), text: o };
         })
-      );
-      const mergedText = mergeTexts(results.map((r) => r.text));
+      ), n = G(s.map((r) => r.text));
       return {
-        success: true,
-        files: results.map((r) => r.fileName),
-        text: mergedText,
-        charCount: mergedText.length
+        success: !0,
+        files: s.map((r) => r.fileName),
+        text: n,
+        charCount: n.length
       };
-    } catch (error) {
-      console.error("Parse multiple error:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+    } catch (s) {
+      return console.error("Parse multiple error:", s), {
+        success: !1,
+        error: s instanceof Error ? s.message : "Unknown error"
       };
     }
-  });
-  ipcMain.handle("file:chunk", async (_event, text, maxChunkSize) => {
-    const chunks = chunkText(text, maxChunkSize);
+  }), a.handle("file:chunk", async (e, t, s) => {
+    const n = R(t, s);
     return {
-      chunks,
-      count: chunks.length
+      chunks: n,
+      count: n.length
     };
   });
 }
-const SYLLABUS_ANALYSIS_PROMPT = `You are an expert academic assistant that analyzes course syllabi and extracts structured information. Your task is to carefully read the provided syllabus and extract all relevant details into a structured JSON format.
+const V = `You are an expert academic assistant that analyzes course syllabi and extracts structured information. Your task is to carefully read the provided syllabus and extract all relevant details into a structured JSON format.
 
 ## Guidelines:
 1. Extract information accurately - do not infer or hallucinate details not present in the syllabus
@@ -198,8 +181,7 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation, jus
   }
 }
 
-Generate 3-5 helpful preparation tips based on the course structure, workload, and requirements. These should be practical and specific to this course.`;
-const CHUNK_MERGE_PROMPT = `You are merging syllabus analysis results from multiple document chunks. Combine the following partial results into a single coherent analysis.
+Generate 3-5 helpful preparation tips based on the course structure, workload, and requirements. These should be practical and specific to this course.`, X = `You are merging syllabus analysis results from multiple document chunks. Combine the following partial results into a single coherent analysis.
 
 Rules:
 1. Merge assignments, removing exact duplicates (same title AND same date)
@@ -209,313 +191,473 @@ Rules:
 5. Flag any assignments that appear similar but might be duplicates
 
 Return the merged result as a single JSON object with the same structure.`;
-class GroqService {
+class Q {
   client;
-  constructor(apiKey) {
-    this.client = new Groq({ apiKey });
+  constructor(t) {
+    this.client = new L({ apiKey: t });
   }
-  async analyzeSyllabus(syllabusText, semesterStartDate) {
-    let contextNote = "";
-    if (semesterStartDate) {
-      contextNote = `
+  async analyzeSyllabus(t, s) {
+    let n = "";
+    s && (n = `
 
-Note: The semester starts on ${semesterStartDate}. Use this to calculate dates for relative references like "Week 3".`;
-    }
-    const response = await this.client.chat.completions.create({
+Note: The semester starts on ${s}. Use this to calculate dates for relative references like "Week 3".`);
+    const o = (await this.client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: SYLLABUS_ANALYSIS_PROMPT
+          content: V
         },
         {
           role: "user",
-          content: `Please analyze this syllabus and extract structured information:${contextNote}
+          content: `Please analyze this syllabus and extract structured information:${n}
 
-${syllabusText}`
+${t}`
         }
       ],
       temperature: 0.1,
       max_tokens: 4096,
       response_format: { type: "json_object" }
-    });
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
+    })).choices[0]?.message?.content;
+    if (!o)
       throw new Error("No response from Groq API");
-    }
     try {
-      return JSON.parse(content);
-    } catch (e) {
-      throw new Error(`Failed to parse LLM response as JSON: ${e}`);
+      return JSON.parse(o);
+    } catch (l) {
+      throw new Error(`Failed to parse LLM response as JSON: ${l}`);
     }
   }
-  async mergeChunkResults(results) {
-    if (results.length === 1) {
-      return results[0];
-    }
-    const response = await this.client.chat.completions.create({
+  async mergeChunkResults(t) {
+    if (t.length === 1)
+      return t[0];
+    const n = (await this.client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: CHUNK_MERGE_PROMPT
+          content: X
         },
         {
           role: "user",
           content: `Merge these partial syllabus analysis results:
 
-${JSON.stringify(results, null, 2)}`
+${JSON.stringify(t, null, 2)}`
         }
       ],
       temperature: 0.1,
       max_tokens: 4096,
       response_format: { type: "json_object" }
-    });
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
+    })).choices[0]?.message?.content;
+    if (!n)
       throw new Error("No response from Groq API during merge");
-    }
-    return JSON.parse(content);
+    return JSON.parse(n);
   }
   async testConnection() {
     try {
-      const response = await this.client.chat.completions.create({
+      return !!(await this.client.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
           { role: "user", content: 'Say "ok" and nothing else.' }
         ],
         max_tokens: 10
-      });
-      return !!response.choices[0]?.message?.content;
-    } catch (e) {
-      return false;
+      })).choices[0]?.message?.content;
+    } catch {
+      return !1;
     }
   }
 }
-function getSecureKeyPath() {
-  const userDataPath = app.getPath("userData");
-  return join(userDataPath, "secure-keys.enc");
+function x() {
+  const e = f.getPath("userData");
+  return g(e, "secure-keys.enc");
 }
-function saveApiKey(key) {
+function Z(e) {
   try {
-    if (!safeStorage.isEncryptionAvailable()) {
+    if (!v.isEncryptionAvailable()) {
       console.warn("Encryption not available, storing key in plain text");
-      const path2 = getSecureKeyPath();
-      writeFileSync(path2, key);
-      return true;
+      const n = x();
+      return d(n, e), !0;
     }
-    const encrypted = safeStorage.encryptString(key);
-    const path = getSecureKeyPath();
-    writeFileSync(path, encrypted);
-    return true;
-  } catch (e) {
-    console.error("Failed to save API key:", e);
-    return false;
+    const t = v.encryptString(e), s = x();
+    return d(s, t), !0;
+  } catch (t) {
+    return console.error("Failed to save API key:", t), !1;
   }
 }
-function loadApiKey() {
+function $() {
   try {
-    const path = getSecureKeyPath();
-    if (!existsSync(path)) {
+    const e = x();
+    if (!h(e))
       return null;
-    }
-    const data = readFileSync(path);
-    if (!safeStorage.isEncryptionAvailable()) {
-      return data.toString("utf-8");
-    }
-    return safeStorage.decryptString(data);
+    const t = C(e);
+    return v.isEncryptionAvailable() ? v.decryptString(t) : t.toString("utf-8");
   } catch (e) {
-    console.error("Failed to load API key:", e);
-    return null;
+    return console.error("Failed to load API key:", e), null;
   }
 }
-function deleteApiKey() {
+function ee() {
   try {
-    const path = getSecureKeyPath();
-    if (existsSync(path)) {
-      const { unlinkSync } = require("fs");
-      unlinkSync(path);
+    const e = x();
+    if (h(e)) {
+      const { unlinkSync: t } = require("fs");
+      t(e);
     }
-    return true;
+    return !0;
   } catch (e) {
-    console.error("Failed to delete API key:", e);
-    return false;
+    return console.error("Failed to delete API key:", e), !1;
   }
 }
-let groqService = null;
-function getGroqService() {
-  if (!groqService) {
-    const apiKey = loadApiKey();
-    if (!apiKey) {
+let w = null;
+function D() {
+  if (!w) {
+    const e = $();
+    if (!e)
       throw new Error("Groq API key not configured. Please add your API key in Settings.");
-    }
-    groqService = new GroqService(apiKey);
+    w = new Q(e);
   }
-  return groqService;
+  return w;
 }
-function registerLLMHandlers() {
-  ipcMain.handle("llm:saveApiKey", async (_event, apiKey) => {
-    const success = saveApiKey(apiKey);
-    if (success) {
-      groqService = null;
-    }
-    return { success };
-  });
-  ipcMain.handle("llm:hasApiKey", async () => {
-    const key = loadApiKey();
-    return { hasKey: !!key };
-  });
-  ipcMain.handle("llm:deleteApiKey", async () => {
-    const success = deleteApiKey();
-    groqService = null;
-    return { success };
-  });
-  ipcMain.handle("llm:testConnection", async () => {
+function te() {
+  a.handle("llm:saveApiKey", async (e, t) => {
+    const s = Z(t);
+    return s && (w = null), { success: s };
+  }), a.handle("llm:hasApiKey", async () => ({ hasKey: !!$() })), a.handle("llm:deleteApiKey", async () => {
+    const e = ee();
+    return w = null, { success: e };
+  }), a.handle("llm:testConnection", async () => {
     try {
-      const service = getGroqService();
-      const success = await service.testConnection();
-      return { success, error: success ? null : "Connection test failed" };
-    } catch (error) {
+      const t = await D().testConnection();
+      return { success: t, error: t ? null : "Connection test failed" };
+    } catch (e) {
       return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+        success: !1,
+        error: e instanceof Error ? e.message : "Unknown error"
       };
     }
-  });
-  ipcMain.handle(
+  }), a.handle(
     "llm:analyze",
-    async (_event, syllabusText, options) => {
+    async (e, t, s) => {
       console.log("Starting syllabus analysis...");
       try {
-        const service = getGroqService();
-        const chunks = chunkText(syllabusText, 1e4, 500);
-        console.log(`Text split into ${chunks.length} chunk(s)`);
-        let result;
-        if (chunks.length === 1) {
-          result = await service.analyzeSyllabus(chunks[0], options.semesterStartDate);
-        } else {
-          const chunkResults = [];
-          for (let i = 0; i < chunks.length; i++) {
-            console.log(`Analyzing chunk ${i + 1}/${chunks.length}...`);
-            const chunkResult = await service.analyzeSyllabus(
-              chunks[i],
-              options.semesterStartDate
+        const n = D(), r = R(t, 1e4, 500);
+        console.log(`Text split into ${r.length} chunk(s)`);
+        let o;
+        if (r.length === 1)
+          o = await n.analyzeSyllabus(r[0], s.semesterStartDate);
+        else {
+          const l = [];
+          for (let u = 0; u < r.length; u++) {
+            console.log(`Analyzing chunk ${u + 1}/${r.length}...`);
+            const q = await n.analyzeSyllabus(
+              r[u],
+              s.semesterStartDate
             );
-            chunkResults.push(chunkResult);
+            l.push(q);
           }
-          console.log("Merging chunk results...");
-          result = await service.mergeChunkResults(chunkResults);
+          console.log("Merging chunk results..."), o = await n.mergeChunkResults(l);
         }
-        if (options.courseName) {
-          result.courseName = options.courseName;
-        }
-        console.log("Analysis complete:", {
-          courseName: result.courseName,
-          assignments: result.assignments?.length || 0,
-          materials: result.materials?.length || 0
-        });
-        return {
-          success: true,
-          data: result
+        return s.courseName && (o.courseName = s.courseName), console.log("Analysis complete:", {
+          courseName: o.courseName,
+          assignments: o.assignments?.length || 0,
+          materials: o.materials?.length || 0
+        }), {
+          success: !0,
+          data: o
         };
-      } catch (error) {
-        console.error("Analysis failed:", error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Analysis failed"
+      } catch (n) {
+        return console.error("Analysis failed:", n), {
+          success: !1,
+          error: n instanceof Error ? n.message : "Analysis failed"
         };
       }
     }
   );
 }
-function registerAllHandlers() {
-  registerFileHandlers();
-  registerLLMHandlers();
+const y = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+function k() {
+  const e = f.getPath("userData");
+  return g(e, "courses.json");
 }
-const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = dirname(__filename$1);
-function getStorePath() {
-  const userDataPath = app.getPath("userData");
-  return join(userDataPath, "window-state.json");
+function ne() {
+  const e = k(), t = g(e, "..");
+  h(t) || T(t, { recursive: !0 });
 }
-function loadWindowBounds() {
+function c() {
   try {
-    const path = getStorePath();
-    if (existsSync(path)) {
-      const data = readFileSync(path, "utf-8");
-      return JSON.parse(data);
+    const e = k();
+    if (h(e)) {
+      const t = C(e, "utf-8");
+      return JSON.parse(t);
+    }
+  } catch (e) {
+    console.error("Failed to load courses:", e);
+  }
+  return [];
+}
+function p(e) {
+  try {
+    ne();
+    const t = k();
+    d(t, JSON.stringify(e, null, 2));
+  } catch (t) {
+    console.error("Failed to save courses:", t);
+  }
+}
+function se(e) {
+  const t = c(), s = {
+    ...e,
+    id: `course_${y()}`,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    // Ensure assignments have IDs
+    assignments: (e.assignments || []).map((n) => ({
+      ...n,
+      id: n.id || `assign_${y()}`,
+      isCompleted: n.isCompleted || !1
+    })),
+    // Ensure materials have IDs
+    materials: (e.materials || []).map((n) => ({
+      ...n,
+      id: n.id || `mat_${y()}`
+    })),
+    // Ensure prep tips have IDs
+    prepTips: (e.prepTips || []).map((n) => ({
+      ...n,
+      id: n.id || `tip_${y()}`
+    }))
+  };
+  return t.push(s), p(t), s;
+}
+function re(e, t) {
+  const s = c(), n = s.findIndex((r) => r.id === e);
+  return n === -1 ? null : (s[n] = {
+    ...s[n],
+    ...t,
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  }, p(s), s[n]);
+}
+function oe(e) {
+  const t = c(), s = t.filter((n) => n.id !== e);
+  return s.length === t.length ? !1 : (p(s), !0);
+}
+function ae(e) {
+  return c().find((s) => s.id === e) || null;
+}
+function ie(e) {
+  return c().filter((s) => s.semesterId === e);
+}
+function ce(e, t, s) {
+  const n = c(), r = n.find((l) => l.id === e);
+  if (!r) return null;
+  const o = r.assignments.findIndex((l) => l.id === t);
+  return o === -1 ? null : (r.assignments[o] = {
+    ...r.assignments[o],
+    ...s
+  }, r.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), p(n), r.assignments[o]);
+}
+function le(e, t) {
+  const s = c(), n = s.find((o) => o.id === e);
+  if (!n) return null;
+  const r = {
+    ...t,
+    id: `assign_${y()}`,
+    isCompleted: t.isCompleted || !1
+  };
+  return n.assignments.push(r), n.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), p(s), r;
+}
+function ue(e, t) {
+  const s = c(), n = s.find((o) => o.id === e);
+  if (!n) return !1;
+  const r = n.assignments.length;
+  return n.assignments = n.assignments.filter((o) => o.id !== t), n.assignments.length === r ? !1 : (n.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), p(s), !0);
+}
+function de() {
+  const e = c();
+  return JSON.stringify(e, null, 2);
+}
+function fe() {
+  const e = c(), t = [];
+  t.push("Course,Assignment,Type,Due Date,Weight,Completed,Grade");
+  for (const s of e)
+    for (const n of s.assignments)
+      t.push([
+        `"${s.name.replace(/"/g, '""')}"`,
+        `"${n.title.replace(/"/g, '""')}"`,
+        n.type,
+        n.dueDate || n.dueDateRaw || "",
+        n.weight?.toString() || "",
+        n.isCompleted ? "Yes" : "No",
+        n.gradeReceived?.toString() || ""
+      ].join(","));
+  return t.join(`
+`);
+}
+function me() {
+  return {
+    courses: c(),
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function ge() {
+  a.handle("store:getCourses", async () => c()), a.handle("store:getCoursesBySemester", async (e, t) => ie(t)), a.handle("store:getCourse", async (e, t) => ae(t)), a.handle("store:createCourse", async (e, t) => {
+    try {
+      return { success: !0, course: se(t) };
+    } catch (s) {
+      return {
+        success: !1,
+        error: s instanceof Error ? s.message : "Failed to create course"
+      };
+    }
+  }), a.handle("store:updateCourse", async (e, t, s) => {
+    try {
+      const n = re(t, s);
+      return n ? { success: !0, course: n } : { success: !1, error: "Course not found" };
+    } catch (n) {
+      return {
+        success: !1,
+        error: n instanceof Error ? n.message : "Failed to update course"
+      };
+    }
+  }), a.handle("store:deleteCourse", async (e, t) => ({ success: oe(t) })), a.handle(
+    "store:updateAssignment",
+    async (e, t, s, n) => {
+      try {
+        const r = ce(t, s, n);
+        return r ? { success: !0, assignment: r } : { success: !1, error: "Assignment not found" };
+      } catch (r) {
+        return {
+          success: !1,
+          error: r instanceof Error ? r.message : "Failed to update assignment"
+        };
+      }
+    }
+  ), a.handle(
+    "store:addAssignment",
+    async (e, t, s) => {
+      try {
+        const n = le(t, s);
+        return n ? { success: !0, assignment: n } : { success: !1, error: "Course not found" };
+      } catch (n) {
+        return {
+          success: !1,
+          error: n instanceof Error ? n.message : "Failed to add assignment"
+        };
+      }
+    }
+  ), a.handle("store:deleteAssignment", async (e, t, s) => ({ success: ue(t, s) })), a.handle("store:exportJSON", async (e) => {
+    const t = m.fromWebContents(e.sender), s = await S.showSaveDialog(t, {
+      defaultPath: "syllabus-export.json",
+      filters: [{ name: "JSON", extensions: ["json"] }]
+    });
+    if (s.canceled || !s.filePath)
+      return { success: !1, canceled: !0 };
+    try {
+      const n = de();
+      return d(s.filePath, n), { success: !0, path: s.filePath };
+    } catch (n) {
+      return {
+        success: !1,
+        error: n instanceof Error ? n.message : "Export failed"
+      };
+    }
+  }), a.handle("store:exportCSV", async (e) => {
+    const t = m.fromWebContents(e.sender), s = await S.showSaveDialog(t, {
+      defaultPath: "syllabus-export.csv",
+      filters: [{ name: "CSV", extensions: ["csv"] }]
+    });
+    if (s.canceled || !s.filePath)
+      return { success: !1, canceled: !0 };
+    try {
+      const n = fe();
+      return d(s.filePath, n), { success: !0, path: s.filePath };
+    } catch (n) {
+      return {
+        success: !1,
+        error: n instanceof Error ? n.message : "Export failed"
+      };
+    }
+  }), a.handle("store:getExportData", async () => me()), a.handle("store:savePDF", async (e, t) => {
+    const s = m.fromWebContents(e.sender), n = await S.showSaveDialog(s, {
+      defaultPath: "syllabus-report.pdf",
+      filters: [{ name: "PDF", extensions: ["pdf"] }]
+    });
+    if (n.canceled || !n.filePath)
+      return { success: !1, canceled: !0 };
+    try {
+      return d(n.filePath, Buffer.from(t)), { success: !0, path: n.filePath };
+    } catch (r) {
+      return {
+        success: !1,
+        error: r instanceof Error ? r.message : "Export failed"
+      };
+    }
+  });
+}
+function he() {
+  K(), te(), ge();
+}
+const pe = j(import.meta.url), A = O(pe);
+function M() {
+  const e = f.getPath("userData");
+  return g(e, "window-state.json");
+}
+function ye() {
+  try {
+    const e = M();
+    if (h(e)) {
+      const t = C(e, "utf-8");
+      return JSON.parse(t);
     }
   } catch (e) {
     console.error("Failed to load window bounds:", e);
   }
   return { width: 1200, height: 800 };
 }
-function saveWindowBoundsToFile(bounds) {
+function we(e) {
   try {
-    const path = getStorePath();
-    const dir = dirname(path);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
-    writeFileSync(path, JSON.stringify(bounds, null, 2));
-  } catch (e) {
-    console.error("Failed to save window bounds:", e);
+    const t = M(), s = O(t);
+    h(s) || T(s, { recursive: !0 }), d(t, JSON.stringify(e, null, 2));
+  } catch (t) {
+    console.error("Failed to save window bounds:", t);
   }
 }
-let mainWindow = null;
-function createWindow() {
-  const { width, height, x, y } = loadWindowBounds();
-  mainWindow = new BrowserWindow({
-    width,
-    height,
-    x,
-    y,
+let i = null;
+function E() {
+  const { width: e, height: t, x: s, y: n } = ye();
+  i = new m({
+    width: e,
+    height: t,
+    x: s,
+    y: n,
     minWidth: 900,
     minHeight: 600,
     webPreferences: {
-      preload: join(__dirname$1, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false
+      preload: g(A, "preload.js"),
+      contextIsolation: !0,
+      nodeIntegration: !1
     },
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#ffffff",
-    show: false
+    backgroundColor: b.shouldUseDarkColors ? "#1e1e1e" : "#ffffff",
+    show: !1
     // Don't show until ready
-  });
-  mainWindow.on("resize", saveWindowBounds);
-  mainWindow.on("move", saveWindowBounds);
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
-  });
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(join(__dirname$1, "../dist/index.html"));
-  }
+  }), i.on("resize", N), i.on("move", N), i.once("ready-to-show", () => {
+    i?.show();
+  }), i.on("closed", () => {
+    i = null;
+  }), process.env.VITE_DEV_SERVER_URL ? (i.loadURL(process.env.VITE_DEV_SERVER_URL), i.webContents.openDevTools()) : i.loadFile(g(A, "../dist/index.html"));
 }
-function saveWindowBounds() {
-  if (!mainWindow) return;
-  const bounds = mainWindow.getBounds();
-  saveWindowBoundsToFile(bounds);
+function N() {
+  if (!i) return;
+  const e = i.getBounds();
+  we(e);
 }
-app.whenReady().then(() => {
-  registerAllHandlers();
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+f.whenReady().then(() => {
+  he(), E(), f.on("activate", () => {
+    m.getAllWindows().length === 0 && E();
   });
 });
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+f.on("window-all-closed", () => {
+  process.platform !== "darwin" && f.quit();
 });
-nativeTheme.on("updated", () => {
-  mainWindow?.webContents.send("theme-changed", nativeTheme.shouldUseDarkColors);
+b.on("updated", () => {
+  i?.webContents.send("theme-changed", b.shouldUseDarkColors);
 });

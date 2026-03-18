@@ -1,5 +1,4 @@
-import React from 'react'
-import { Bell, Search, Plus, ArrowLeft } from 'lucide-react'
+import { Bell, Search, Plus } from 'lucide-react'
 import { useSemesterStore } from '../../store'
 
 type View = 'dashboard' | 'add-course' | 'calendar' | 'settings'

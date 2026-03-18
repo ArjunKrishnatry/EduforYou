@@ -49,6 +49,38 @@ interface ConnectionResult {
   error?: string | null
 }
 
+// Types for store operations
+interface Course {
+  id: string
+  name: string
+  code?: string
+  color: string
+  semesterId: string
+  instructor?: any
+  assignments: any[]
+  gradeWeights: any[]
+  materials: any[]
+  prepTips: any[]
+  policies?: any
+  rawSyllabusText?: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface StoreResult<T = any> {
+  success: boolean
+  course?: T
+  assignment?: T
+  error?: string
+  canceled?: boolean
+  path?: string
+}
+
+interface PDFExportData {
+  courses: Course[]
+  generatedAt: string
+}
+
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
   // Theme
@@ -93,6 +125,59 @@ contextBridge.exposeInMainWorld('electronAPI', {
   analyzeSyllabus: (text: string, options: AnalysisOptions): Promise<AnalysisResult> => {
     return ipcRenderer.invoke('llm:analyze', text, options)
   },
+
+  // Store operations
+  getCourses: (): Promise<Course[]> => {
+    return ipcRenderer.invoke('store:getCourses')
+  },
+
+  getCoursesBySemester: (semesterId: string): Promise<Course[]> => {
+    return ipcRenderer.invoke('store:getCoursesBySemester', semesterId)
+  },
+
+  getCourse: (id: string): Promise<Course | null> => {
+    return ipcRenderer.invoke('store:getCourse', id)
+  },
+
+  createCourse: (courseData: Omit<Course, 'id' | 'createdAt' | 'updatedAt'>): Promise<StoreResult<Course>> => {
+    return ipcRenderer.invoke('store:createCourse', courseData)
+  },
+
+  updateCourse: (id: string, updates: Partial<Course>): Promise<StoreResult<Course>> => {
+    return ipcRenderer.invoke('store:updateCourse', id, updates)
+  },
+
+  deleteCourse: (id: string): Promise<StoreResult> => {
+    return ipcRenderer.invoke('store:deleteCourse', id)
+  },
+
+  updateAssignment: (courseId: string, assignmentId: string, updates: any): Promise<StoreResult> => {
+    return ipcRenderer.invoke('store:updateAssignment', courseId, assignmentId, updates)
+  },
+
+  addAssignment: (courseId: string, assignment: any): Promise<StoreResult> => {
+    return ipcRenderer.invoke('store:addAssignment', courseId, assignment)
+  },
+
+  deleteAssignment: (courseId: string, assignmentId: string): Promise<StoreResult> => {
+    return ipcRenderer.invoke('store:deleteAssignment', courseId, assignmentId)
+  },
+
+  exportJSON: (): Promise<StoreResult> => {
+    return ipcRenderer.invoke('store:exportJSON')
+  },
+
+  exportCSV: (): Promise<StoreResult> => {
+    return ipcRenderer.invoke('store:exportCSV')
+  },
+
+  getExportData: (): Promise<PDFExportData> => {
+    return ipcRenderer.invoke('store:getExportData')
+  },
+
+  savePDF: (pdfData: ArrayBuffer): Promise<StoreResult> => {
+    return ipcRenderer.invoke('store:savePDF', pdfData)
+  },
 })
 
 // Type declarations for the exposed API
@@ -114,6 +199,21 @@ declare global {
       deleteApiKey: () => Promise<ApiKeyResult>
       testConnection: () => Promise<ConnectionResult>
       analyzeSyllabus: (text: string, options: AnalysisOptions) => Promise<AnalysisResult>
+
+      // Store operations
+      getCourses: () => Promise<Course[]>
+      getCoursesBySemester: (semesterId: string) => Promise<Course[]>
+      getCourse: (id: string) => Promise<Course | null>
+      createCourse: (courseData: Omit<Course, 'id' | 'createdAt' | 'updatedAt'>) => Promise<StoreResult<Course>>
+      updateCourse: (id: string, updates: Partial<Course>) => Promise<StoreResult<Course>>
+      deleteCourse: (id: string) => Promise<StoreResult>
+      updateAssignment: (courseId: string, assignmentId: string, updates: any) => Promise<StoreResult>
+      addAssignment: (courseId: string, assignment: any) => Promise<StoreResult>
+      deleteAssignment: (courseId: string, assignmentId: string) => Promise<StoreResult>
+      exportJSON: () => Promise<StoreResult>
+      exportCSV: () => Promise<StoreResult>
+      getExportData: () => Promise<PDFExportData>
+      savePDF: (pdfData: ArrayBuffer) => Promise<StoreResult>
     }
   }
 }

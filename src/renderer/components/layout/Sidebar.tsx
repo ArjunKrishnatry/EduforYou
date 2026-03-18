@@ -8,7 +8,7 @@ import {
   ChevronRight,
   Plus
 } from 'lucide-react'
-import { useUIStore, useSemesterStore } from '../../store'
+import { useUIStore, useSemesterStore, useCourseStore } from '../../store'
 
 type View = 'dashboard' | 'add-course' | 'calendar' | 'settings'
 
@@ -48,9 +48,16 @@ function NavItem({ icon, label, isActive, collapsed, onClick }: NavItemProps) {
 
 export function Sidebar({ currentView, onNavigate, onOpenSettings }: SidebarProps) {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
-  const { semesters } = useSemesterStore()
+  const { semesters, currentSemesterId } = useSemesterStore()
+  const { courses } = useCourseStore()
 
   const starredSemester = semesters.find(s => s.isStarred)
+
+  // Filter courses for the current/starred semester
+  const displaySemesterId = starredSemester?.id || currentSemesterId
+  const semesterCourses = displaySemesterId
+    ? courses.filter(c => c.semesterId === displaySemesterId)
+    : courses
 
   return (
     <aside
@@ -107,12 +114,35 @@ export function Sidebar({ currentView, onNavigate, onOpenSettings }: SidebarProp
               </button>
             </div>
 
-            {/* Placeholder for courses - will be populated in Phase 4 */}
-            <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 italic">
-              {semesters.length === 0
-                ? 'Add a semester to get started'
-                : 'No courses yet'}
-            </div>
+            {/* Course list */}
+            {semesters.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 italic">
+                Add a semester to get started
+              </div>
+            ) : semesterCourses.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 italic">
+                No courses yet
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {semesterCourses.map((course) => (
+                  <button
+                    key={course.id}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    title={course.name}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: course.color }}
+                    />
+                    <span className="truncate">{course.name}</span>
+                    <span className="ml-auto text-xs text-gray-400">
+                      {course.assignments.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Semester } from '../types'
+import type { Semester } from '../../shared/types'
 
 interface SemesterState {
   semesters: Semester[]

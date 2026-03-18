@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { FileText, Type, ArrowRight, AlertCircle, CheckCircle, Settings } from 'lucide-react'
 import { TextPasteArea } from './TextPasteArea'
 import { FileUploader } from './FileUploader'
