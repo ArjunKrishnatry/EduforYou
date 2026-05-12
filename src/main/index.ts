@@ -191,6 +191,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   stopNotificationScheduler()
   tray?.destroy()
+  tray = null  // allow the window close handler to let the quit proceed
 })
 
 // Handle dark mode changes

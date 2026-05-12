@@ -25,7 +25,10 @@ export default defineConfig({
                 ...builtinModules.map(m => `node:${m}`),
                 'pdf-parse',
                 'mammoth',
-                'groq-sdk'
+                'groq-sdk',
+                'googleapis',
+                'google-auth-library',
+                'electron-store',
               ],
               output: {
                 entryFileNames: '[name].js'

@@ -89,9 +89,10 @@ export const useCourseStore = create<CourseState>()((set, get) => ({
         }))
         return true
       }
+      toast(result.error || 'Failed to update course')
       return false
-    } catch (error) {
-      console.error('Failed to update course:', error)
+    } catch {
+      toast('Failed to update course')
       return false
     }
   },

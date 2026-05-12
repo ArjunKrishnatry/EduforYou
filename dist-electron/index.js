@@ -1,139 +1,125 @@
-import { ipcMain, BrowserWindow, dialog, safeStorage, app, nativeTheme } from "electron";
-import { extname, basename, join, dirname } from "path";
-import { fileURLToPath } from "url";
-import { writeFileSync, existsSync, readFileSync, mkdirSync } from "fs";
-import { readFile } from "fs/promises";
-import { createRequire } from "module";
-import Groq from "groq-sdk";
-const require$1 = createRequire(import.meta.url);
-const pdfParse = require$1("pdf-parse");
-const mammoth = require$1("mammoth");
-async function parsePDF(filePath) {
-  const buffer = await readFile(filePath);
-  const data = await pdfParse(buffer);
-  return data.text;
+import { ipcMain as i, BrowserWindow as b, dialog as I, safeStorage as D, app as h, shell as he, Notification as M, nativeTheme as L, nativeImage as ge, Tray as me, Menu as pe } from "electron";
+import { extname as ye, basename as q, join as y, dirname as ee } from "path";
+import { fileURLToPath as we } from "url";
+import { writeFileSync as m, existsSync as g, readFileSync as C, unlinkSync as $, mkdirSync as te } from "fs";
+import { readFile as ne } from "fs/promises";
+import { createRequire as Se } from "module";
+import De from "groq-sdk";
+import { google as se } from "googleapis";
+import { createServer as Ce } from "http";
+import { deflateSync as be } from "zlib";
+const re = Se(import.meta.url), Ee = re("pdf-parse"), Te = re("mammoth");
+async function ve(e) {
+  const t = await ne(e);
+  return (await Ee(t)).text;
 }
-async function parseDOCX(filePath) {
-  const result = await mammoth.extractRawText({ path: filePath });
-  return result.value;
+async function Ae(e) {
+  return (await Te.extractRawText({ path: e })).value;
 }
-async function parseTXT(filePath) {
-  const content = await readFile(filePath, "utf-8");
-  return content;
+async function Ie(e) {
+  return await ne(e, "utf-8");
 }
-async function parseFile(filePath) {
-  const ext = extname(filePath).toLowerCase();
-  switch (ext) {
+async function H(e) {
+  const t = ye(e).toLowerCase();
+  switch (t) {
     case ".pdf":
-      const pdfText = await parsePDF(filePath);
-      const estimatedPages = Math.ceil(pdfText.length / 3e3);
-      return { text: pdfText, pages: estimatedPages };
+      const n = await ve(e), s = Math.ceil(n.length / 3e3);
+      return { text: n, pages: s };
     case ".docx":
     case ".doc":
-      const docText = await parseDOCX(filePath);
-      return { text: docText };
+      return { text: await Ae(e) };
     case ".txt":
     case ".md":
-      const txtText = await parseTXT(filePath);
-      return { text: txtText };
+      return { text: await Ie(e) };
     default:
-      throw new Error(`Unsupported file type: ${ext}`);
+      throw new Error(`Unsupported file type: ${t}`);
   }
 }
-function chunkText(text, maxChunkSize = 12e3, overlap = 500) {
-  if (text.length <= maxChunkSize) {
-    return [text];
-  }
-  const chunks = [];
-  let start = 0;
-  while (start < text.length) {
-    let end = start + maxChunkSize;
-    if (end < text.length) {
-      const paragraphBreak = text.lastIndexOf("\n\n", end);
-      if (paragraphBreak > start + maxChunkSize / 2) {
-        end = paragraphBreak + 2;
-      } else {
-        const sentenceBreak = text.lastIndexOf(". ", end);
-        if (sentenceBreak > start + maxChunkSize / 2) {
-          end = sentenceBreak + 2;
-        }
+function oe(e, t = 12e3, n = 500) {
+  if (e.length <= t)
+    return [e];
+  const s = [];
+  let o = 0;
+  for (; o < e.length; ) {
+    let r = o + t;
+    if (r < e.length) {
+      const a = e.lastIndexOf(`
+
+`, r);
+      if (a > o + t / 2)
+        r = a + 2;
+      else {
+        const c = e.lastIndexOf(". ", r);
+        c > o + t / 2 && (r = c + 2);
       }
     }
-    chunks.push(text.slice(start, end));
-    start = end - overlap;
+    s.push(e.slice(o, r)), o = r - n;
   }
-  return chunks;
+  return s;
 }
-function mergeTexts(texts) {
-  return texts.join("\n\n---\n\n");
+function Ne(e) {
+  return e.join(`
+
+---
+
+`);
 }
-function registerFileHandlers() {
-  ipcMain.handle("file:select", async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showOpenDialog(win, {
+function xe() {
+  i.handle("file:select", async (e) => {
+    const t = b.fromWebContents(e.sender), n = await I.showOpenDialog(t, {
       properties: ["openFile", "multiSelections"],
       filters: [
         { name: "Documents", extensions: ["pdf", "docx", "doc", "txt", "md"] }
       ]
     });
-    if (result.canceled || result.filePaths.length === 0) {
-      return null;
-    }
-    return result.filePaths;
-  });
-  ipcMain.handle("file:parse", async (_event, filePath) => {
-    console.log("Parsing file:", filePath);
+    return n.canceled || n.filePaths.length === 0 ? null : n.filePaths;
+  }), i.handle("file:parse", async (e, t) => {
+    console.log("Parsing file:", t);
     try {
-      const { text, pages } = await parseFile(filePath);
-      console.log("Parse success:", text.length, "chars");
-      return {
-        success: true,
-        fileName: basename(filePath),
-        text,
-        pages,
-        charCount: text.length
+      const { text: n, pages: s } = await H(t);
+      return console.log("Parse success:", n.length, "chars"), {
+        success: !0,
+        fileName: q(t),
+        text: n,
+        pages: s,
+        charCount: n.length
       };
-    } catch (error) {
-      console.error("Parse error:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+    } catch (n) {
+      return console.error("Parse error:", n), {
+        success: !1,
+        error: n instanceof Error ? n.message : "Unknown error"
       };
     }
-  });
-  ipcMain.handle("file:parseMultiple", async (_event, filePaths) => {
-    console.log("Parsing multiple files:", filePaths);
+  }), i.handle("file:parseMultiple", async (e, t) => {
+    console.log("Parsing multiple files:", t);
     try {
-      const results = await Promise.all(
-        filePaths.map(async (path) => {
-          const { text } = await parseFile(path);
-          return { fileName: basename(path), text };
+      const n = await Promise.all(
+        t.map(async (o) => {
+          const { text: r } = await H(o);
+          return { fileName: q(o), text: r };
         })
-      );
-      const mergedText = mergeTexts(results.map((r) => r.text));
+      ), s = Ne(n.map((o) => o.text));
       return {
-        success: true,
-        files: results.map((r) => r.fileName),
-        text: mergedText,
-        charCount: mergedText.length
+        success: !0,
+        files: n.map((o) => o.fileName),
+        text: s,
+        charCount: s.length
       };
-    } catch (error) {
-      console.error("Parse multiple error:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+    } catch (n) {
+      return console.error("Parse multiple error:", n), {
+        success: !1,
+        error: n instanceof Error ? n.message : "Unknown error"
       };
     }
-  });
-  ipcMain.handle("file:chunk", async (_event, text, maxChunkSize) => {
-    const chunks = chunkText(text, maxChunkSize);
+  }), i.handle("file:chunk", async (e, t, n) => {
+    const s = oe(t, n);
     return {
-      chunks,
-      count: chunks.length
+      chunks: s,
+      count: s.length
     };
   });
 }
-const SYLLABUS_ANALYSIS_PROMPT = `You are an expert academic assistant that analyzes course syllabi and extracts structured information. Your task is to carefully read the provided syllabus and extract all relevant details into a structured JSON format.
+const Oe = `You are an expert academic assistant that analyzes course syllabi and extracts structured information. Your task is to carefully read the provided syllabus and extract all relevant details into a structured JSON format.
 
 ## Guidelines:
 1. Extract information accurately - do not infer or hallucinate details not present in the syllabus
@@ -198,8 +184,7 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation, jus
   }
 }
 
-Generate 3-5 helpful preparation tips based on the course structure, workload, and requirements. These should be practical and specific to this course.`;
-const CHUNK_MERGE_PROMPT = `You are merging syllabus analysis results from multiple document chunks. Combine the following partial results into a single coherent analysis.
+Generate 3-5 helpful preparation tips based on the course structure, workload, and requirements. These should be practical and specific to this course.`, Pe = `You are merging syllabus analysis results from multiple document chunks. Combine the following partial results into a single coherent analysis.
 
 Rules:
 1. Merge assignments, removing exact duplicates (same title AND same date)
@@ -209,610 +194,813 @@ Rules:
 5. Flag any assignments that appear similar but might be duplicates
 
 Return the merged result as a single JSON object with the same structure.`;
-class GroqService {
+class ke {
   client;
-  constructor(apiKey) {
-    this.client = new Groq({ apiKey });
+  constructor(t) {
+    this.client = new De({ apiKey: t });
   }
-  async analyzeSyllabus(syllabusText, semesterStartDate) {
-    let contextNote = "";
-    if (semesterStartDate) {
-      contextNote = `
+  async analyzeSyllabus(t, n) {
+    let s = "";
+    n && (s = `
 
-Note: The semester starts on ${semesterStartDate}. Use this to calculate dates for relative references like "Week 3".`;
-    }
-    const response = await this.client.chat.completions.create({
+Note: The semester starts on ${n}. Use this to calculate dates for relative references like "Week 3".`);
+    const r = (await this.client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: SYLLABUS_ANALYSIS_PROMPT
+          content: Oe
         },
         {
           role: "user",
-          content: `Please analyze this syllabus and extract structured information:${contextNote}
+          content: `Please analyze this syllabus and extract structured information:${s}
 
-${syllabusText}`
+${t}`
         }
       ],
       temperature: 0.1,
       max_tokens: 4096,
       response_format: { type: "json_object" }
-    });
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
+    })).choices[0]?.message?.content;
+    if (!r)
       throw new Error("No response from Groq API");
-    }
     try {
-      return JSON.parse(content);
-    } catch (e) {
-      throw new Error(`Failed to parse LLM response as JSON: ${e}`);
+      return JSON.parse(r);
+    } catch (a) {
+      throw new Error(`Failed to parse LLM response as JSON: ${a}`);
     }
   }
-  async mergeChunkResults(results) {
-    if (results.length === 1) {
-      return results[0];
-    }
-    const response = await this.client.chat.completions.create({
+  async mergeChunkResults(t) {
+    if (t.length === 1)
+      return t[0];
+    const s = (await this.client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: CHUNK_MERGE_PROMPT
+          content: Pe
         },
         {
           role: "user",
           content: `Merge these partial syllabus analysis results:
 
-${JSON.stringify(results, null, 2)}`
+${JSON.stringify(t, null, 2)}`
         }
       ],
       temperature: 0.1,
       max_tokens: 4096,
       response_format: { type: "json_object" }
-    });
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
+    })).choices[0]?.message?.content;
+    if (!s)
       throw new Error("No response from Groq API during merge");
-    }
-    return JSON.parse(content);
+    return JSON.parse(s);
   }
   async testConnection() {
     try {
-      const response = await this.client.chat.completions.create({
+      return !!(await this.client.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
           { role: "user", content: 'Say "ok" and nothing else.' }
         ],
         max_tokens: 10
-      });
-      return !!response.choices[0]?.message?.content;
-    } catch (e) {
-      return false;
+      })).choices[0]?.message?.content;
+    } catch {
+      return !1;
     }
   }
 }
-function getSecureKeyPath() {
-  const userDataPath = app.getPath("userData");
-  return join(userDataPath, "secure-keys.enc");
+function _() {
+  const e = h.getPath("userData");
+  return y(e, "secure-keys.enc");
 }
-function saveApiKey(key) {
+function $e(e) {
   try {
-    if (!safeStorage.isEncryptionAvailable()) {
+    if (!D.isEncryptionAvailable()) {
       console.warn("Encryption not available, storing key in plain text");
-      const path2 = getSecureKeyPath();
-      writeFileSync(path2, key);
-      return true;
+      const s = _();
+      return m(s, e), !0;
     }
-    const encrypted = safeStorage.encryptString(key);
-    const path = getSecureKeyPath();
-    writeFileSync(path, encrypted);
-    return true;
-  } catch (e) {
-    console.error("Failed to save API key:", e);
-    return false;
+    const t = D.encryptString(e), n = _();
+    return m(n, t), !0;
+  } catch (t) {
+    return console.error("Failed to save API key:", t), !1;
   }
 }
-function loadApiKey() {
+function ae() {
   try {
-    const path = getSecureKeyPath();
-    if (!existsSync(path)) {
+    const e = _();
+    if (!g(e))
       return null;
-    }
-    const data = readFileSync(path);
-    if (!safeStorage.isEncryptionAvailable()) {
-      return data.toString("utf-8");
-    }
-    return safeStorage.decryptString(data);
+    const t = C(e);
+    return D.isEncryptionAvailable() ? D.decryptString(t) : t.toString("utf-8");
   } catch (e) {
-    console.error("Failed to load API key:", e);
-    return null;
+    return console.error("Failed to load API key:", e), null;
   }
 }
-function deleteApiKey() {
+function _e() {
   try {
-    const path = getSecureKeyPath();
-    if (existsSync(path)) {
-      const { unlinkSync } = require("fs");
-      unlinkSync(path);
-    }
-    return true;
+    const e = _();
+    return g(e) && $(e), !0;
   } catch (e) {
-    console.error("Failed to delete API key:", e);
-    return false;
+    return console.error("Failed to delete API key:", e), !1;
   }
 }
-let groqService = null;
-function getGroqService() {
-  if (!groqService) {
-    const apiKey = loadApiKey();
-    if (!apiKey) {
+let N = null;
+function j() {
+  if (!N) {
+    const e = ae();
+    if (!e)
       throw new Error("Groq API key not configured. Please add your API key in Settings.");
-    }
-    groqService = new GroqService(apiKey);
+    N = new ke(e);
   }
-  return groqService;
+  return N;
 }
-function registerLLMHandlers() {
-  ipcMain.handle("llm:saveApiKey", async (_event, apiKey) => {
-    const success = saveApiKey(apiKey);
-    if (success) {
-      groqService = null;
-    }
-    return { success };
-  });
-  ipcMain.handle("llm:hasApiKey", async () => {
-    const key = loadApiKey();
-    return { hasKey: !!key };
-  });
-  ipcMain.handle("llm:deleteApiKey", async () => {
-    const success = deleteApiKey();
-    groqService = null;
-    return { success };
-  });
-  ipcMain.handle("llm:testConnection", async () => {
+function Re() {
+  i.handle("llm:saveApiKey", async (e, t) => {
+    const n = $e(t);
+    return n && (N = null), { success: n };
+  }), i.handle("llm:hasApiKey", async () => ({ hasKey: !!ae() })), i.handle("llm:deleteApiKey", async () => {
+    const e = _e();
+    return N = null, { success: e };
+  }), i.handle("llm:testConnection", async () => {
     try {
-      const service = getGroqService();
-      const success = await service.testConnection();
-      return { success, error: success ? null : "Connection test failed" };
-    } catch (error) {
+      const t = await j().testConnection();
+      return { success: t, error: t ? null : "Connection test failed" };
+    } catch (e) {
       return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+        success: !1,
+        error: e instanceof Error ? e.message : "Unknown error"
       };
     }
-  });
-  ipcMain.handle(
+  }), i.handle(
     "llm:analyze",
-    async (_event, syllabusText, options) => {
+    async (e, t, n) => {
       console.log("Starting syllabus analysis...");
       try {
-        const service = getGroqService();
-        const chunks = chunkText(syllabusText, 1e4, 500);
-        console.log(`Text split into ${chunks.length} chunk(s)`);
-        let result;
-        if (chunks.length === 1) {
-          result = await service.analyzeSyllabus(chunks[0], options.semesterStartDate);
-        } else {
-          const chunkResults = [];
-          for (let i = 0; i < chunks.length; i++) {
-            console.log(`Analyzing chunk ${i + 1}/${chunks.length}...`);
-            const chunkResult = await service.analyzeSyllabus(
-              chunks[i],
-              options.semesterStartDate
+        const s = j(), o = oe(t, 1e4, 500);
+        console.log(`Text split into ${o.length} chunk(s)`);
+        let r;
+        if (o.length === 1)
+          r = await s.analyzeSyllabus(o[0], n.semesterStartDate);
+        else {
+          const a = [];
+          for (let c = 0; c < o.length; c++) {
+            console.log(`Analyzing chunk ${c + 1}/${o.length}...`);
+            const d = await s.analyzeSyllabus(
+              o[c],
+              n.semesterStartDate
             );
-            chunkResults.push(chunkResult);
+            a.push(d);
           }
-          console.log("Merging chunk results...");
-          result = await service.mergeChunkResults(chunkResults);
+          console.log("Merging chunk results..."), r = await s.mergeChunkResults(a);
         }
-        if (options.courseName) {
-          result.courseName = options.courseName;
-        }
-        console.log("Analysis complete:", {
-          courseName: result.courseName,
-          assignments: result.assignments?.length || 0,
-          materials: result.materials?.length || 0
-        });
-        return {
-          success: true,
-          data: result
+        return n.courseName && (r.courseName = n.courseName), console.log("Analysis complete:", {
+          courseName: r.courseName,
+          assignments: r.assignments?.length || 0,
+          materials: r.materials?.length || 0
+        }), {
+          success: !0,
+          data: r
         };
-      } catch (error) {
-        console.error("Analysis failed:", error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : "Analysis failed"
+      } catch (s) {
+        return console.error("Analysis failed:", s), {
+          success: !1,
+          error: s instanceof Error ? s.message : "Analysis failed"
         };
       }
     }
   );
 }
-const generateId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-function getCoursesPath() {
-  const userDataPath = app.getPath("userData");
-  return join(userDataPath, "courses.json");
+const A = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+function W() {
+  const e = h.getPath("userData");
+  return y(e, "courses.json");
 }
-function ensureDirectory() {
-  const path = getCoursesPath();
-  const dir = join(path, "..");
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+function Be() {
+  const e = W(), t = y(e, "..");
+  g(t) || te(t, { recursive: !0 });
 }
-function loadCourses() {
+function f() {
   try {
-    const path = getCoursesPath();
-    if (existsSync(path)) {
-      const data = readFileSync(path, "utf-8");
-      return JSON.parse(data);
+    const e = W();
+    if (g(e)) {
+      const t = C(e, "utf-8");
+      return JSON.parse(t);
     }
   } catch (e) {
     console.error("Failed to load courses:", e);
   }
   return [];
 }
-function saveCourses(courses) {
+function T(e) {
   try {
-    ensureDirectory();
-    const path = getCoursesPath();
-    writeFileSync(path, JSON.stringify(courses, null, 2));
-  } catch (e) {
-    console.error("Failed to save courses:", e);
+    Be();
+    const t = W();
+    m(t, JSON.stringify(e, null, 2));
+  } catch (t) {
+    console.error("Failed to save courses:", t);
   }
 }
-function createCourse(courseData) {
-  const courses = loadCourses();
-  const newCourse = {
-    ...courseData,
-    id: `course_${generateId()}`,
+function Ue(e) {
+  const t = f(), n = {
+    ...e,
+    id: `course_${A()}`,
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
     // Ensure assignments have IDs
-    assignments: (courseData.assignments || []).map((a) => ({
-      ...a,
-      id: a.id || `assign_${generateId()}`,
-      isCompleted: a.isCompleted || false
+    assignments: (e.assignments || []).map((s) => ({
+      ...s,
+      id: s.id || `assign_${A()}`,
+      isCompleted: s.isCompleted || !1
     })),
     // Ensure materials have IDs
-    materials: (courseData.materials || []).map((m) => ({
-      ...m,
-      id: m.id || `mat_${generateId()}`
+    materials: (e.materials || []).map((s) => ({
+      ...s,
+      id: s.id || `mat_${A()}`
     })),
     // Ensure prep tips have IDs
-    prepTips: (courseData.prepTips || []).map((p) => ({
-      ...p,
-      id: p.id || `tip_${generateId()}`
+    prepTips: (e.prepTips || []).map((s) => ({
+      ...s,
+      id: s.id || `tip_${A()}`
     }))
   };
-  courses.push(newCourse);
-  saveCourses(courses);
-  return newCourse;
+  return t.push(n), T(t), n;
 }
-function updateCourse(id, updates) {
-  const courses = loadCourses();
-  const index = courses.findIndex((c) => c.id === id);
-  if (index === -1) return null;
-  courses[index] = {
-    ...courses[index],
-    ...updates,
+function Me(e, t) {
+  const n = f(), s = n.findIndex((o) => o.id === e);
+  return s === -1 ? null : (n[s] = {
+    ...n[s],
+    ...t,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  }, T(n), n[s]);
+}
+function Le(e) {
+  const t = f(), n = t.filter((s) => s.id !== e);
+  return n.length === t.length ? !1 : (T(n), !0);
+}
+function Fe(e) {
+  return f().find((n) => n.id === e) || null;
+}
+function ze(e) {
+  return f().filter((n) => n.semesterId === e);
+}
+function Je(e, t, n) {
+  const s = f(), o = s.find((a) => a.id === e);
+  if (!o) return null;
+  const r = o.assignments.findIndex((a) => a.id === t);
+  return r === -1 ? null : (o.assignments[r] = {
+    ...o.assignments[r],
+    ...n
+  }, o.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), T(s), o.assignments[r]);
+}
+function Ge(e, t) {
+  const n = f(), s = n.find((r) => r.id === e);
+  if (!s) return null;
+  const o = {
+    ...t,
+    id: `assign_${A()}`,
+    isCompleted: t.isCompleted || !1
   };
-  saveCourses(courses);
-  return courses[index];
+  return s.assignments.push(o), s.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), T(n), o;
 }
-function deleteCourse(id) {
-  const courses = loadCourses();
-  const filtered = courses.filter((c) => c.id !== id);
-  if (filtered.length === courses.length) return false;
-  saveCourses(filtered);
-  return true;
+function We(e, t) {
+  const n = f(), s = n.find((r) => r.id === e);
+  if (!s) return !1;
+  const o = s.assignments.length;
+  return s.assignments = s.assignments.filter((r) => r.id !== t), s.assignments.length === o ? !1 : (s.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), T(n), !0);
 }
-function getCourse(id) {
-  const courses = loadCourses();
-  return courses.find((c) => c.id === id) || null;
+function qe() {
+  const e = f();
+  return JSON.stringify(e, null, 2);
 }
-function getCoursesBySemester(semesterId) {
-  const courses = loadCourses();
-  return courses.filter((c) => c.semesterId === semesterId);
-}
-function updateAssignment(courseId, assignmentId, updates) {
-  const courses = loadCourses();
-  const course = courses.find((c) => c.id === courseId);
-  if (!course) return null;
-  const assignmentIndex = course.assignments.findIndex((a) => a.id === assignmentId);
-  if (assignmentIndex === -1) return null;
-  course.assignments[assignmentIndex] = {
-    ...course.assignments[assignmentIndex],
-    ...updates
-  };
-  course.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  saveCourses(courses);
-  return course.assignments[assignmentIndex];
-}
-function addAssignment(courseId, assignment) {
-  const courses = loadCourses();
-  const course = courses.find((c) => c.id === courseId);
-  if (!course) return null;
-  const newAssignment = {
-    ...assignment,
-    id: `assign_${generateId()}`,
-    isCompleted: assignment.isCompleted || false
-  };
-  course.assignments.push(newAssignment);
-  course.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  saveCourses(courses);
-  return newAssignment;
-}
-function deleteAssignment(courseId, assignmentId) {
-  const courses = loadCourses();
-  const course = courses.find((c) => c.id === courseId);
-  if (!course) return false;
-  const initialLength = course.assignments.length;
-  course.assignments = course.assignments.filter((a) => a.id !== assignmentId);
-  if (course.assignments.length === initialLength) return false;
-  course.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  saveCourses(courses);
-  return true;
-}
-function exportToJSON() {
-  const courses = loadCourses();
-  return JSON.stringify(courses, null, 2);
-}
-function exportToCSV() {
-  const courses = loadCourses();
-  const rows = [];
-  rows.push("Course,Assignment,Type,Due Date,Weight,Completed,Grade");
-  for (const course of courses) {
-    for (const assignment of course.assignments) {
-      rows.push([
-        `"${course.name.replace(/"/g, '""')}"`,
-        `"${assignment.title.replace(/"/g, '""')}"`,
-        assignment.type,
-        assignment.dueDate || assignment.dueDateRaw || "",
-        assignment.weight?.toString() || "",
-        assignment.isCompleted ? "Yes" : "No",
-        assignment.gradeReceived?.toString() || ""
+function He() {
+  const e = f(), t = [];
+  t.push("Course,Assignment,Type,Due Date,Weight,Completed,Grade");
+  for (const n of e)
+    for (const s of n.assignments)
+      t.push([
+        `"${n.name.replace(/"/g, '""')}"`,
+        `"${s.title.replace(/"/g, '""')}"`,
+        s.type,
+        s.dueDate || s.dueDateRaw || "",
+        s.weight?.toString() || "",
+        s.isCompleted ? "Yes" : "No",
+        s.gradeReceived?.toString() || ""
       ].join(","));
-    }
-  }
-  return rows.join("\n");
+  return t.join(`
+`);
 }
-function getExportData() {
+function je() {
   return {
-    courses: loadCourses(),
+    courses: f(),
     generatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
-function registerStoreHandlers() {
-  ipcMain.handle("store:getCourses", async () => {
-    return loadCourses();
-  });
-  ipcMain.handle("store:getCoursesBySemester", async (_event, semesterId) => {
-    return getCoursesBySemester(semesterId);
-  });
-  ipcMain.handle("store:getCourse", async (_event, id) => {
-    return getCourse(id);
-  });
-  ipcMain.handle("store:createCourse", async (_event, courseData) => {
+function Ye() {
+  i.handle("store:getCourses", async () => f()), i.handle("store:getCoursesBySemester", async (e, t) => ze(t)), i.handle("store:getCourse", async (e, t) => Fe(t)), i.handle("store:createCourse", async (e, t) => {
     try {
-      const course = createCourse(courseData);
-      return { success: true, course };
-    } catch (error) {
+      return { success: !0, course: Ue(t) };
+    } catch (n) {
       return {
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to create course"
+        success: !1,
+        error: n instanceof Error ? n.message : "Failed to create course"
       };
     }
-  });
-  ipcMain.handle("store:updateCourse", async (_event, id, updates) => {
+  }), i.handle("store:updateCourse", async (e, t, n) => {
     try {
-      const course = updateCourse(id, updates);
-      if (!course) {
-        return { success: false, error: "Course not found" };
-      }
-      return { success: true, course };
-    } catch (error) {
+      const s = Me(t, n);
+      return s ? { success: !0, course: s } : { success: !1, error: "Course not found" };
+    } catch (s) {
       return {
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to update course"
+        success: !1,
+        error: s instanceof Error ? s.message : "Failed to update course"
       };
     }
-  });
-  ipcMain.handle("store:deleteCourse", async (_event, id) => {
-    const success = deleteCourse(id);
-    return { success };
-  });
-  ipcMain.handle(
+  }), i.handle("store:deleteCourse", async (e, t) => ({ success: Le(t) })), i.handle(
     "store:updateAssignment",
-    async (_event, courseId, assignmentId, updates) => {
+    async (e, t, n, s) => {
       try {
-        const assignment = updateAssignment(courseId, assignmentId, updates);
-        if (!assignment) {
-          return { success: false, error: "Assignment not found" };
-        }
-        return { success: true, assignment };
-      } catch (error) {
+        const o = Je(t, n, s);
+        return o ? { success: !0, assignment: o } : { success: !1, error: "Assignment not found" };
+      } catch (o) {
         return {
-          success: false,
-          error: error instanceof Error ? error.message : "Failed to update assignment"
+          success: !1,
+          error: o instanceof Error ? o.message : "Failed to update assignment"
         };
       }
     }
-  );
-  ipcMain.handle(
+  ), i.handle(
     "store:addAssignment",
-    async (_event, courseId, assignment) => {
+    async (e, t, n) => {
       try {
-        const newAssignment = addAssignment(courseId, assignment);
-        if (!newAssignment) {
-          return { success: false, error: "Course not found" };
-        }
-        return { success: true, assignment: newAssignment };
-      } catch (error) {
+        const s = Ge(t, n);
+        return s ? { success: !0, assignment: s } : { success: !1, error: "Course not found" };
+      } catch (s) {
         return {
-          success: false,
-          error: error instanceof Error ? error.message : "Failed to add assignment"
+          success: !1,
+          error: s instanceof Error ? s.message : "Failed to add assignment"
         };
       }
     }
-  );
-  ipcMain.handle("store:deleteAssignment", async (_event, courseId, assignmentId) => {
-    const success = deleteAssignment(courseId, assignmentId);
-    return { success };
-  });
-  ipcMain.handle("store:exportJSON", async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showSaveDialog(win, {
+  ), i.handle("store:deleteAssignment", async (e, t, n) => ({ success: We(t, n) })), i.handle("store:exportJSON", async (e) => {
+    const t = b.fromWebContents(e.sender), n = await I.showSaveDialog(t, {
       defaultPath: "syllabus-export.json",
       filters: [{ name: "JSON", extensions: ["json"] }]
     });
-    if (result.canceled || !result.filePath) {
-      return { success: false, canceled: true };
-    }
+    if (n.canceled || !n.filePath)
+      return { success: !1, canceled: !0 };
     try {
-      const json = exportToJSON();
-      writeFileSync(result.filePath, json);
-      return { success: true, path: result.filePath };
-    } catch (error) {
+      const s = qe();
+      return m(n.filePath, s), { success: !0, path: n.filePath };
+    } catch (s) {
       return {
-        success: false,
-        error: error instanceof Error ? error.message : "Export failed"
+        success: !1,
+        error: s instanceof Error ? s.message : "Export failed"
       };
     }
-  });
-  ipcMain.handle("store:exportCSV", async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showSaveDialog(win, {
+  }), i.handle("store:exportCSV", async (e) => {
+    const t = b.fromWebContents(e.sender), n = await I.showSaveDialog(t, {
       defaultPath: "syllabus-export.csv",
       filters: [{ name: "CSV", extensions: ["csv"] }]
     });
-    if (result.canceled || !result.filePath) {
-      return { success: false, canceled: true };
-    }
+    if (n.canceled || !n.filePath)
+      return { success: !1, canceled: !0 };
     try {
-      const csv = exportToCSV();
-      writeFileSync(result.filePath, csv);
-      return { success: true, path: result.filePath };
-    } catch (error) {
+      const s = He();
+      return m(n.filePath, s), { success: !0, path: n.filePath };
+    } catch (s) {
       return {
-        success: false,
-        error: error instanceof Error ? error.message : "Export failed"
+        success: !1,
+        error: s instanceof Error ? s.message : "Export failed"
       };
     }
-  });
-  ipcMain.handle("store:getExportData", async () => {
-    return getExportData();
-  });
-  ipcMain.handle("store:savePDF", async (event, pdfData) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showSaveDialog(win, {
+  }), i.handle("store:getExportData", async () => je()), i.handle("store:savePDF", async (e, t) => {
+    const n = b.fromWebContents(e.sender), s = await I.showSaveDialog(n, {
       defaultPath: "syllabus-report.pdf",
       filters: [{ name: "PDF", extensions: ["pdf"] }]
     });
-    if (result.canceled || !result.filePath) {
-      return { success: false, canceled: true };
-    }
+    if (s.canceled || !s.filePath)
+      return { success: !1, canceled: !0 };
     try {
-      writeFileSync(result.filePath, Buffer.from(pdfData));
-      return { success: true, path: result.filePath };
-    } catch (error) {
+      return m(s.filePath, Buffer.from(t)), { success: !0, path: s.filePath };
+    } catch (o) {
       return {
-        success: false,
-        error: error instanceof Error ? error.message : "Export failed"
+        success: !1,
+        error: o instanceof Error ? o.message : "Export failed"
       };
     }
   });
 }
-function registerAllHandlers() {
-  registerFileHandlers();
-  registerLLMHandlers();
-  registerStoreHandlers();
+function O(e) {
+  return e.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n").replace(/\r/g, "");
 }
-const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = dirname(__filename$1);
-function getStorePath() {
-  const userDataPath = app.getPath("userData");
-  return join(userDataPath, "window-state.json");
+function Y(e) {
+  const t = new Date(e), n = t.getUTCFullYear(), s = String(t.getUTCMonth() + 1).padStart(2, "0"), o = String(t.getUTCDate()).padStart(2, "0");
+  return `${n}${s}${o}`;
 }
-function loadWindowBounds() {
+function Ve(e) {
+  return new Date(e).toISOString().replace(/[-:]/g, "").replace(".000", "");
+}
+function Ke(e, t) {
+  const n = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Syllabus Dashboard//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    `X-WR-CALNAME:${O("Syllabus Dashboard")}`,
+    "X-WR-TIMEZONE:UTC"
+  ], s = Ve((/* @__PURE__ */ new Date()).toISOString());
+  for (const o of e)
+    for (const r of o.assignments) {
+      if (!r.dueDate) continue;
+      const a = `${r.id}@syllabus-dashboard`, c = Y(r.dueDate), d = Y(new Date(new Date(r.dueDate).getTime() + 864e5).toISOString()), l = [];
+      o.name && l.push(`Course: ${o.name}`), r.type && l.push(`Type: ${r.type.charAt(0).toUpperCase() + r.type.slice(1)}`), r.weight !== void 0 && l.push(`Weight: ${r.weight}%`), r.description && l.push(`
+${r.description}`), n.push("BEGIN:VEVENT"), n.push(`UID:${a}`), n.push(`DTSTAMP:${s}`), n.push(`DTSTART;VALUE=DATE:${c}`), n.push(`DTEND;VALUE=DATE:${d}`), n.push(`SUMMARY:${O(`${o.name}: ${r.title}`)}`), l.length && n.push(`DESCRIPTION:${O(l.join("\\n"))}`), n.push(`CATEGORIES:${O(o.name)}`), r.isCompleted ? n.push("STATUS:COMPLETED") : n.push("STATUS:CONFIRMED"), n.push("END:VEVENT");
+    }
+  return n.push("END:VCALENDAR"), n.join(`\r
+`);
+}
+const Xe = ["https://www.googleapis.com/auth/calendar"], P = 42813, Qe = `http://localhost:${P}/oauth2callback`, R = () => y(h.getPath("userData"), "google-tokens.enc"), B = () => y(h.getPath("userData"), "google-creds.json");
+function ie(e) {
+  const t = JSON.stringify(e);
+  D.isEncryptionAvailable() ? m(R(), D.encryptString(t)) : m(B(), t);
+}
+function F() {
   try {
-    const path = getStorePath();
-    if (existsSync(path)) {
-      const data = readFileSync(path, "utf-8");
-      return JSON.parse(data);
+    if (D.isEncryptionAvailable() && g(R())) {
+      const e = C(R());
+      return JSON.parse(D.decryptString(e));
+    }
+    if (g(B()))
+      return JSON.parse(C(B(), "utf-8"));
+  } catch {
+  }
+  return null;
+}
+function Ze() {
+  const e = R(), t = B();
+  try {
+    g(e) && $(e);
+  } catch {
+  }
+  try {
+    g(t) && $(t);
+  } catch {
+  }
+}
+const x = () => y(h.getPath("userData"), "google-oauth-tokens.json");
+function ce(e) {
+  m(x(), JSON.stringify(e, null, 2));
+}
+function le() {
+  try {
+    if (g(x()))
+      return JSON.parse(C(x(), "utf-8"));
+  } catch {
+  }
+  return null;
+}
+function et() {
+  try {
+    g(x()) && $(x());
+  } catch {
+  }
+}
+function tt() {
+  return le() !== null;
+}
+function ue(e) {
+  return new se.auth.OAuth2(e.clientId, e.clientSecret, Qe);
+}
+async function nt(e) {
+  const t = ue(e), n = t.generateAuthUrl({
+    access_type: "offline",
+    scope: Xe,
+    prompt: "consent"
+  });
+  return new Promise((s, o) => {
+    const r = Ce(async (a, c) => {
+      try {
+        const d = new URL(a.url, `http://localhost:${P}`), l = d.searchParams.get("code"), p = d.searchParams.get("error");
+        if (p) {
+          c.writeHead(200, { "Content-Type": "text/html" }), c.end("<h2>Authorization denied. You can close this tab.</h2>"), r.close(), o(new Error(`OAuth error: ${p}`));
+          return;
+        }
+        if (!l) {
+          c.writeHead(400, { "Content-Type": "text/html" }), c.end("<h2>Missing authorization code.</h2>"), r.close(), o(new Error("Missing authorization code"));
+          return;
+        }
+        const { tokens: v } = await t.getToken(l);
+        ce(v), ie(e), c.writeHead(200, { "Content-Type": "text/html" }), c.end("<h2>Connected! You can close this tab and return to Syllabus Dashboard.</h2>"), r.close(), s();
+      } catch (d) {
+        c.writeHead(500, { "Content-Type": "text/html" }), c.end("<h2>An error occurred. Please try again.</h2>"), r.close(), o(d);
+      }
+    });
+    r.listen(P, () => {
+      he.openExternal(n);
+    }), r.on("error", (a) => {
+      o(new Error(`Could not start local server on port ${P}: ${a.message}`));
+    }), setTimeout(() => {
+      r.close(), o(new Error("OAuth timed out"));
+    }, 300 * 1e3);
+  });
+}
+function V(e) {
+  return e.split("T")[0];
+}
+function st(e) {
+  return `sd${e}`.replace(/[^a-z0-9]/g, "").toLowerCase().slice(0, 64);
+}
+async function rt(e) {
+  const t = le(), n = F();
+  if (!t || !n) throw new Error("Not connected to Google Calendar");
+  const s = ue(n);
+  s.setCredentials(t), s.on("tokens", (d) => {
+    ce({ ...t, ...d });
+  });
+  const o = se.calendar({ version: "v3", auth: s });
+  let r = "primary";
+  try {
+    const l = (await o.calendarList.list()).data.items?.find((p) => p.summary === "Syllabus Dashboard");
+    l ? r = l.id : r = (await o.calendars.insert({
+      requestBody: { summary: "Syllabus Dashboard", description: "Managed by Syllabus Dashboard app" }
+    })).data.id;
+  } catch {
+    r = "primary";
+  }
+  let a = 0, c = 0;
+  for (const d of e)
+    for (const l of d.assignments) {
+      if (!l.dueDate) continue;
+      const p = st(l.id), v = new Date(new Date(l.dueDate).getTime() + 864e5).toISOString(), E = {
+        summary: `${d.name}: ${l.title}`,
+        description: [
+          `Type: ${l.type}`,
+          l.weight !== void 0 ? `Weight: ${l.weight}%` : "",
+          l.description || ""
+        ].filter(Boolean).join(`
+`),
+        start: { date: V(l.dueDate) },
+        end: { date: V(v) }
+      };
+      try {
+        try {
+          await o.events.update({ calendarId: r, eventId: p, requestBody: E });
+        } catch {
+          await o.events.insert({ calendarId: r, requestBody: { ...E, id: p } });
+        }
+        a++;
+      } catch {
+        c++;
+      }
+    }
+  return { synced: a, errors: c };
+}
+function ot() {
+  i.handle("calendar:exportICS", async (e) => {
+    const t = b.fromWebContents(e.sender), n = await I.showSaveDialog(t, {
+      defaultPath: "syllabus-calendar.ics",
+      filters: [{ name: "iCalendar", extensions: ["ics"] }]
+    });
+    if (n.canceled || !n.filePath)
+      return { success: !1, canceled: !0 };
+    try {
+      const s = f(), o = Ke(s);
+      return m(n.filePath, o, "utf-8"), { success: !0, path: n.filePath };
+    } catch (s) {
+      return { success: !1, error: s instanceof Error ? s.message : "Export failed" };
+    }
+  }), i.handle("calendar:isConnected", () => ({ connected: tt() })), i.handle("calendar:hasCredentials", () => {
+    const e = F();
+    return { hasCredentials: e !== null, clientId: e?.clientId || "" };
+  }), i.handle("calendar:saveCredentials", async (e, t, n) => {
+    try {
+      return ie({ clientId: t, clientSecret: n }), { success: !0 };
+    } catch (s) {
+      return { success: !1, error: s instanceof Error ? s.message : "Failed to save credentials" };
+    }
+  }), i.handle("calendar:googleConnect", async () => {
+    const e = F();
+    if (!e)
+      return { success: !1, error: "No Google credentials configured. Please add your Client ID and Client Secret first." };
+    try {
+      return await nt(e), { success: !0 };
+    } catch (t) {
+      return { success: !1, error: t instanceof Error ? t.message : "OAuth failed" };
+    }
+  }), i.handle("calendar:googleSync", async () => {
+    try {
+      const e = f();
+      return { success: !0, ...await rt(e) };
+    } catch (e) {
+      return { success: !1, error: e instanceof Error ? e.message : "Sync failed" };
+    }
+  }), i.handle("calendar:googleDisconnect", async () => (et(), Ze(), { success: !0 }));
+}
+function z() {
+  return y(h.getPath("userData"), "notification-log.json");
+}
+function at() {
+  try {
+    if (g(z())) {
+      const e = JSON.parse(C(z(), "utf-8")), t = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      if (e.date === t) return e;
+    }
+  } catch {
+  }
+  return { date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0], shown: [] };
+}
+function it(e) {
+  try {
+    m(z(), JSON.stringify(e, null, 2));
+  } catch {
+  }
+}
+const J = () => y(h.getPath("userData"), "notification-settings.json");
+function de() {
+  try {
+    if (g(J()))
+      return JSON.parse(C(J(), "utf-8"));
+  } catch {
+  }
+  return { enabled: !0, daysAhead: 7 };
+}
+function ct(e) {
+  m(J(), JSON.stringify(e, null, 2));
+}
+function lt(e) {
+  const t = /* @__PURE__ */ new Date();
+  t.setHours(0, 0, 0, 0);
+  const n = new Date(e);
+  return n.setHours(0, 0, 0, 0), Math.round((n.getTime() - t.getTime()) / 864e5);
+}
+function ut(e) {
+  return e === 0 ? "today" : e === 1 ? "tomorrow" : `in ${e} days`;
+}
+function G() {
+  const e = de();
+  if (!e.enabled || !M.isSupported()) return;
+  const t = f(), n = at(), s = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+  n.date !== s && (n.date = s, n.shown = []);
+  for (const o of t)
+    for (const r of o.assignments) {
+      if (r.isCompleted || !r.dueDate || n.shown.includes(r.id)) continue;
+      const a = lt(r.dueDate);
+      if (a < 0 || a > e.daysAhead) continue;
+      const c = r.weight !== void 0 ? ` (${r.weight}% of grade)` : "", d = `${o.name}: ${r.title}`, l = `Due ${ut(a)}${c}`;
+      new M({ title: d, body: l, silent: !1 }).show(), n.shown.push(r.id);
+    }
+  it(n);
+}
+let k = null;
+function dt() {
+  G(), k = setInterval(G, 3600 * 1e3);
+}
+function ft() {
+  k && (clearInterval(k), k = null);
+}
+function ht() {
+  i.handle("notifications:getSettings", () => de()), i.handle("notifications:saveSettings", (e, t) => (ct(t), { success: !0 })), i.handle("notifications:isSupported", () => ({ supported: M.isSupported() })), i.handle("notifications:checkNow", () => (G(), { success: !0 }));
+}
+function gt() {
+  xe(), Re(), Ye(), ot(), ht();
+}
+const mt = (() => {
+  const e = new Uint32Array(256);
+  for (let t = 0; t < 256; t++) {
+    let n = t;
+    for (let s = 0; s < 8; s++)
+      n = n & 1 ? 3988292384 ^ n >>> 1 : n >>> 1;
+    e[t] = n;
+  }
+  return e;
+})();
+function pt(e) {
+  let t = 4294967295;
+  for (const n of e)
+    t = mt[(t ^ n) & 255] ^ t >>> 8;
+  return (t ^ 4294967295) >>> 0;
+}
+function U(e, t) {
+  const n = Buffer.from(e, "ascii"), s = pt(Buffer.concat([n, t])), o = Buffer.allocUnsafe(4), r = Buffer.allocUnsafe(4);
+  return o.writeUInt32BE(t.length, 0), r.writeUInt32BE(s, 0), Buffer.concat([o, n, t, r]);
+}
+function yt() {
+  const t = [];
+  for (let r = 0; r < 16; r++) {
+    const a = Buffer.allocUnsafe(65);
+    a[0] = 0;
+    for (let c = 0; c < 16; c++) {
+      const d = c - 8 + 0.5, l = r - 16 / 2 + 0.5, p = Math.sqrt(d * d + l * l), v = p <= 16 / 2 - 1, E = p > 16 / 2 - 2 && p <= 16 / 2 - 1, S = 1 + c * 4;
+      v ? (a[S] = E ? 30 : 64, a[S + 1] = E ? 60 : 115, a[S + 2] = E ? 200 : 255, a[S + 3] = 255) : a[S] = a[S + 1] = a[S + 2] = a[S + 3] = 0;
+    }
+    t.push(a);
+  }
+  const n = Buffer.concat(t), s = be(n), o = Buffer.allocUnsafe(13);
+  return o.writeUInt32BE(16, 0), o.writeUInt32BE(16, 4), o[8] = 8, o[9] = 6, o[10] = o[11] = o[12] = 0, Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    // PNG magic
+    U("IHDR", o),
+    U("IDAT", s),
+    U("IEND", Buffer.alloc(0))
+  ]);
+}
+const wt = we(import.meta.url), K = ee(wt);
+function fe() {
+  const e = h.getPath("userData");
+  return y(e, "window-state.json");
+}
+function St() {
+  try {
+    const e = fe();
+    if (g(e)) {
+      const t = C(e, "utf-8");
+      return JSON.parse(t);
     }
   } catch (e) {
     console.error("Failed to load window bounds:", e);
   }
   return { width: 1200, height: 800 };
 }
-function saveWindowBoundsToFile(bounds) {
+function Dt(e) {
   try {
-    const path = getStorePath();
-    const dir = dirname(path);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
-    writeFileSync(path, JSON.stringify(bounds, null, 2));
-  } catch (e) {
-    console.error("Failed to save window bounds:", e);
+    const t = fe(), n = ee(t);
+    g(n) || te(n, { recursive: !0 }), m(t, JSON.stringify(e, null, 2));
+  } catch (t) {
+    console.error("Failed to save window bounds:", t);
   }
 }
-let mainWindow = null;
-function createWindow() {
-  const { width, height, x, y } = loadWindowBounds();
-  mainWindow = new BrowserWindow({
-    width,
-    height,
-    x,
-    y,
+let u = null, w = null;
+function X() {
+  const e = f(), t = /* @__PURE__ */ new Date(), n = new Date(t.getTime() + 10080 * 60 * 1e3), s = e.flatMap(
+    (r) => r.assignments.filter((a) => !a.isCompleted && a.dueDate).map((a) => ({ ...a, courseName: r.name }))
+  ).filter((r) => {
+    const a = new Date(r.dueDate);
+    return a >= t && a <= n;
+  }).sort((r, a) => new Date(r.dueDate).getTime() - new Date(a.dueDate).getTime()).slice(0, 5), o = s.length ? s.map((r) => ({
+    label: `${r.courseName}: ${r.title} – ${new Date(r.dueDate).toLocaleDateString(void 0, { month: "short", day: "numeric" })}`,
+    enabled: !1
+  })) : [{ label: "No upcoming deadlines", enabled: !1 }];
+  return pe.buildFromTemplate([
+    { label: "Syllabus Dashboard", enabled: !1 },
+    { type: "separator" },
+    ...o,
+    { type: "separator" },
+    { label: "Open", click: () => {
+      u?.show(), u?.focus();
+    } },
+    { label: "Quit", click: () => h.quit() }
+  ]);
+}
+function Ct() {
+  const e = yt(), t = ge.createFromBuffer(e);
+  process.platform === "darwin" && t.setTemplateImage(!0), w = new me(t), w.setToolTip("Syllabus Dashboard"), w.setContextMenu(X()), w.on("click", () => {
+    w?.setContextMenu(X()), process.platform !== "darwin" && (u?.show(), u?.focus());
+  });
+}
+function Q() {
+  const { width: e, height: t, x: n, y: s } = St();
+  u = new b({
+    width: e,
+    height: t,
+    x: n,
+    y: s,
     minWidth: 900,
     minHeight: 600,
     webPreferences: {
-      preload: join(__dirname$1, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false
+      preload: y(K, "preload.js"),
+      contextIsolation: !0,
+      nodeIntegration: !1
     },
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#ffffff",
-    show: false
+    backgroundColor: L.shouldUseDarkColors ? "#1e1e1e" : "#ffffff",
+    show: !1
     // Don't show until ready
-  });
-  mainWindow.on("resize", saveWindowBounds);
-  mainWindow.on("move", saveWindowBounds);
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
-  });
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(join(__dirname$1, "../dist/index.html"));
-  }
+  }), u.on("resize", Z), u.on("move", Z), u.once("ready-to-show", () => {
+    u?.show();
+  }), u.on("close", (o) => {
+    w && (o.preventDefault(), u?.hide());
+  }), u.on("closed", () => {
+    u = null;
+  }), process.env.VITE_DEV_SERVER_URL ? (u.loadURL(process.env.VITE_DEV_SERVER_URL), u.webContents.openDevTools()) : u.loadFile(y(K, "../dist/index.html"));
 }
-function saveWindowBounds() {
-  if (!mainWindow) return;
-  const bounds = mainWindow.getBounds();
-  saveWindowBoundsToFile(bounds);
+function Z() {
+  if (!u) return;
+  const e = u.getBounds();
+  Dt(e);
 }
-app.whenReady().then(() => {
-  registerAllHandlers();
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+h.whenReady().then(() => {
+  gt(), Q(), Ct(), dt(), h.on("activate", () => {
+    b.getAllWindows().length === 0 ? Q() : u?.show();
   });
 });
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+h.on("window-all-closed", () => {
+  !w && process.platform !== "darwin" && h.quit();
 });
-nativeTheme.on("updated", () => {
-  mainWindow?.webContents.send("theme-changed", nativeTheme.shouldUseDarkColors);
+h.on("before-quit", () => {
+  ft(), w?.destroy(), w = null;
+});
+L.on("updated", () => {
+  u?.webContents.send("theme-changed", L.shouldUseDarkColors);
 });

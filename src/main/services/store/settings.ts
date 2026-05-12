@@ -1,6 +1,6 @@
 import { app, safeStorage } from 'electron'
 import { join } from 'path'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 
 interface Settings {
   groqApiKey?: string
@@ -100,7 +100,6 @@ export function deleteApiKey(): boolean {
   try {
     const path = getSecureKeyPath()
     if (existsSync(path)) {
-      const { unlinkSync } = require('fs')
       unlinkSync(path)
     }
     return true

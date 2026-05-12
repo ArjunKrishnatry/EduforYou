@@ -58,7 +58,6 @@ export function generateICS(courses: Course[], semesterName?: string): string {
       lines.push(`SUMMARY:${escapeICS(`${course.name}: ${assignment.title}`)}`)
       if (descParts.length) lines.push(`DESCRIPTION:${escapeICS(descParts.join('\\n'))}`)
       lines.push(`CATEGORIES:${escapeICS(course.name)}`)
-      lines.push(`COLOR:${course.color}`)
       if (assignment.isCompleted) lines.push('STATUS:COMPLETED')
       else lines.push('STATUS:CONFIRMED')
       lines.push('END:VEVENT')

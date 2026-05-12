@@ -1,9 +1,8 @@
 import { google } from 'googleapis'
 import { createServer } from 'http'
-import { shell, safeStorage } from 'electron'
-import { app } from 'electron'
+import { shell, safeStorage, app } from 'electron'
 import { join } from 'path'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs'
 import type { Course } from '../../../shared/types.js'
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -52,8 +51,8 @@ export function loadGoogleCredentials(): GoogleCredentials | null {
 export function deleteGoogleCredentials(): void {
   const tf = TOKEN_FILE()
   const cf = CREDS_FILE()
-  if (existsSync(tf)) { try { require('fs').unlinkSync(tf) } catch {} }
-  if (existsSync(cf)) { try { require('fs').unlinkSync(cf) } catch {} }
+  try { if (existsSync(tf)) unlinkSync(tf) } catch {}
+  try { if (existsSync(cf)) unlinkSync(cf) } catch {}
 }
 
 // ── Token storage ────────────────────────────────────────────────────────────
@@ -75,7 +74,7 @@ function loadTokens(): TokenData | null {
 
 export function deleteTokens(): void {
   try {
-    if (existsSync(TOKEN_STORE())) require('fs').unlinkSync(TOKEN_STORE())
+    if (existsSync(TOKEN_STORE())) unlinkSync(TOKEN_STORE())
   } catch {}
 }
 
@@ -122,7 +121,6 @@ export async function initiateOAuthFlow(creds: GoogleCredentials): Promise<void>
 
         const { tokens } = await client.getToken(code)
         saveTokens(tokens as TokenData)
-        // Also save credentials for future use
         saveGoogleCredentials(creds)
 
         res.writeHead(200, { 'Content-Type': 'text/html' })
@@ -159,6 +157,11 @@ function toGoogleDate(iso: string): string {
   return iso.split('T')[0]
 }
 
+// Google Calendar event IDs must be lowercase alphanumeric (5–1024 chars)
+function makeEventId(assignmentId: string): string {
+  return `sd${assignmentId}`.replace(/[^a-z0-9]/g, '').toLowerCase().slice(0, 64)
+}
+
 export async function syncToGoogleCalendar(courses: Course[]): Promise<{ synced: number; errors: number }> {
   const tokens = loadTokens()
   const creds = loadGoogleCredentials()
@@ -167,15 +170,14 @@ export async function syncToGoogleCalendar(courses: Course[]): Promise<{ synced:
   const client = createOAuth2Client(creds)
   client.setCredentials(tokens)
 
-  // Refresh token if needed and save updated tokens
+  // Persist refreshed tokens automatically
   client.on('tokens', (newTokens) => {
-    const merged = { ...tokens, ...newTokens }
-    saveTokens(merged as TokenData)
+    saveTokens({ ...tokens, ...newTokens } as TokenData)
   })
 
   const calendar = google.calendar({ version: 'v3', auth: client })
 
-  // Find or create our calendar
+  // Find or create a dedicated "Syllabus Dashboard" calendar
   let calendarId = 'primary'
   try {
     const listRes = await calendar.calendarList.list()
@@ -199,7 +201,8 @@ export async function syncToGoogleCalendar(courses: Course[]): Promise<{ synced:
     for (const assignment of course.assignments) {
       if (!assignment.dueDate) continue
 
-      const eventId = `sd_${assignment.id}`.replace(/[^a-zA-Z0-9]/g, '')
+      const eventId = makeEventId(assignment.id)
+      const nextDay = new Date(new Date(assignment.dueDate).getTime() + 86400000).toISOString()
       const event = {
         summary: `${course.name}: ${assignment.title}`,
         description: [
@@ -208,16 +211,10 @@ export async function syncToGoogleCalendar(courses: Course[]): Promise<{ synced:
           assignment.description || ''
         ].filter(Boolean).join('\n'),
         start: { date: toGoogleDate(assignment.dueDate) },
-        end: {
-          date: toGoogleDate(
-            new Date(new Date(assignment.dueDate).getTime() + 86400000).toISOString()
-          )
-        },
-        colorId: course.color ? '9' : undefined, // blueberry default
+        end: { date: toGoogleDate(nextDay) },
       }
 
       try {
-        // Try update first, then insert
         try {
           await calendar.events.update({ calendarId, eventId, requestBody: event })
         } catch {
