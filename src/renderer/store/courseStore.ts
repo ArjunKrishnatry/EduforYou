@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { jsPDF } from 'jspdf'
 import type { Course, Assignment } from '../../shared/types'
+import { useUIStore } from './uiStore'
+
+const toast = (msg: string, type: 'success' | 'error' | 'info' = 'error') =>
+  useUIStore.getState().addToast(msg, type)
 
 interface CourseState {
   courses: Course[]
@@ -66,10 +70,10 @@ export const useCourseStore = create<CourseState>()((set, get) => ({
         }))
         return result.course
       }
-      console.error('Failed to create course:', result.error)
+      toast(result.error || 'Failed to create course')
       return null
     } catch (error) {
-      console.error('Failed to create course:', error)
+      toast('Failed to create course')
       return null
     }
   },
@@ -117,13 +121,13 @@ export const useCourseStore = create<CourseState>()((set, get) => ({
     try {
       const result = await window.electronAPI.updateAssignment(courseId, assignmentId, updates)
       if (result.success) {
-        // Reload courses to get updated data
         await get().loadCourses()
         return true
       }
+      toast(result.error || 'Failed to update assignment')
       return false
-    } catch (error) {
-      console.error('Failed to update assignment:', error)
+    } catch {
+      toast('Failed to update assignment')
       return false
     }
   },
@@ -132,13 +136,13 @@ export const useCourseStore = create<CourseState>()((set, get) => ({
     try {
       const result = await window.electronAPI.addAssignment(courseId, assignment)
       if (result.success && result.assignment) {
-        // Reload courses to get updated data
         await get().loadCourses()
         return result.assignment
       }
+      toast(result.error || 'Failed to add assignment')
       return null
-    } catch (error) {
-      console.error('Failed to add assignment:', error)
+    } catch {
+      toast('Failed to add assignment')
       return null
     }
   },
@@ -147,13 +151,13 @@ export const useCourseStore = create<CourseState>()((set, get) => ({
     try {
       const result = await window.electronAPI.deleteAssignment(courseId, assignmentId)
       if (result.success) {
-        // Reload courses to get updated data
         await get().loadCourses()
         return true
       }
+      toast(result.error || 'Failed to delete assignment')
       return false
-    } catch (error) {
-      console.error('Failed to delete assignment:', error)
+    } catch {
+      toast('Failed to delete assignment')
       return false
     }
   },

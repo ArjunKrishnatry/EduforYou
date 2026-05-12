@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { BookOpen, Calendar, TrendingUp, Clock } from 'lucide-react'
+import { BookOpen, Calendar, TrendingUp, Clock, ChevronRight } from 'lucide-react'
 import { useSemesterStore, useCourseStore } from '../../store'
 
 function formatRelativeDate(date: Date): string {
@@ -40,7 +40,11 @@ function StatCard({ icon, label, value, color }: StatCardProps) {
   )
 }
 
-export function Dashboard() {
+interface DashboardProps {
+  onSelectCourse?: (courseId: string) => void
+}
+
+export function Dashboard({ onSelectCourse }: DashboardProps) {
   const { semesters } = useSemesterStore()
   const { courses } = useCourseStore()
   const starredSemester = semesters.find(s => s.isStarred)
@@ -178,7 +182,8 @@ export function Dashboard() {
                   return (
                     <div
                       key={assignment.id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
+                      onClick={() => course && onSelectCourse?.(course.id)}
+                      className={`flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 ${course && onSelectCourse ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors' : ''}`}
                     >
                       <div
                         className="w-2 h-full min-h-[40px] rounded-full"
@@ -245,12 +250,13 @@ export function Dashboard() {
                     : null
 
                   return (
-                    <div
+                    <button
                       key={course.id}
-                      className="flex items-center gap-3"
+                      onClick={() => onSelectCourse?.(course.id)}
+                      className="w-full flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
                     >
                       <div
-                        className="w-3 h-3 rounded-full"
+                        className="w-3 h-3 rounded-full flex-shrink-0"
                         style={{ backgroundColor: course.color }}
                       />
                       <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
@@ -259,7 +265,8 @@ export function Dashboard() {
                       <span className="text-sm font-medium text-gray-900 dark:text-white">
                         {courseAvg !== null ? `${courseAvg.toFixed(1)}%` : '--'}
                       </span>
-                    </div>
+                      <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />
+                    </button>
                   )
                 })}
               </div>

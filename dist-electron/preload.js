@@ -1,1 +1,85 @@
-"use strict";const r=require("electron");r.contextBridge.exposeInMainWorld("electronAPI",{onThemeChange:e=>{r.ipcRenderer.on("theme-changed",(n,t)=>e(t))},selectFiles:()=>r.ipcRenderer.invoke("file:select"),parseFile:e=>r.ipcRenderer.invoke("file:parse",e),parseMultipleFiles:e=>r.ipcRenderer.invoke("file:parseMultiple",e),chunkText:(e,n)=>r.ipcRenderer.invoke("file:chunk",e,n),saveApiKey:e=>r.ipcRenderer.invoke("llm:saveApiKey",e),hasApiKey:()=>r.ipcRenderer.invoke("llm:hasApiKey"),deleteApiKey:()=>r.ipcRenderer.invoke("llm:deleteApiKey"),testConnection:()=>r.ipcRenderer.invoke("llm:testConnection"),analyzeSyllabus:(e,n)=>r.ipcRenderer.invoke("llm:analyze",e,n),getCourses:()=>r.ipcRenderer.invoke("store:getCourses"),getCoursesBySemester:e=>r.ipcRenderer.invoke("store:getCoursesBySemester",e),getCourse:e=>r.ipcRenderer.invoke("store:getCourse",e),createCourse:e=>r.ipcRenderer.invoke("store:createCourse",e),updateCourse:(e,n)=>r.ipcRenderer.invoke("store:updateCourse",e,n),deleteCourse:e=>r.ipcRenderer.invoke("store:deleteCourse",e),updateAssignment:(e,n,t)=>r.ipcRenderer.invoke("store:updateAssignment",e,n,t),addAssignment:(e,n)=>r.ipcRenderer.invoke("store:addAssignment",e,n),deleteAssignment:(e,n)=>r.ipcRenderer.invoke("store:deleteAssignment",e,n),exportJSON:()=>r.ipcRenderer.invoke("store:exportJSON"),exportCSV:()=>r.ipcRenderer.invoke("store:exportCSV"),getExportData:()=>r.ipcRenderer.invoke("store:getExportData"),savePDF:e=>r.ipcRenderer.invoke("store:savePDF",e)});
+import { contextBridge, ipcRenderer } from "electron";
+contextBridge.exposeInMainWorld("electronAPI", {
+  // Theme
+  onThemeChange: (callback) => {
+    ipcRenderer.on("theme-changed", (_event, isDark) => callback(isDark));
+  },
+  // File operations
+  selectFiles: () => {
+    return ipcRenderer.invoke("file:select");
+  },
+  parseFile: (filePath) => {
+    return ipcRenderer.invoke("file:parse", filePath);
+  },
+  parseMultipleFiles: (filePaths) => {
+    return ipcRenderer.invoke("file:parseMultiple", filePaths);
+  },
+  chunkText: (text, maxChunkSize) => {
+    return ipcRenderer.invoke("file:chunk", text, maxChunkSize);
+  },
+  // LLM operations
+  saveApiKey: (apiKey) => {
+    return ipcRenderer.invoke("llm:saveApiKey", apiKey);
+  },
+  hasApiKey: () => {
+    return ipcRenderer.invoke("llm:hasApiKey");
+  },
+  deleteApiKey: () => {
+    return ipcRenderer.invoke("llm:deleteApiKey");
+  },
+  testConnection: () => {
+    return ipcRenderer.invoke("llm:testConnection");
+  },
+  analyzeSyllabus: (text, options) => {
+    return ipcRenderer.invoke("llm:analyze", text, options);
+  },
+  // Store operations
+  getCourses: () => {
+    return ipcRenderer.invoke("store:getCourses");
+  },
+  getCoursesBySemester: (semesterId) => {
+    return ipcRenderer.invoke("store:getCoursesBySemester", semesterId);
+  },
+  getCourse: (id) => {
+    return ipcRenderer.invoke("store:getCourse", id);
+  },
+  createCourse: (courseData) => {
+    return ipcRenderer.invoke("store:createCourse", courseData);
+  },
+  updateCourse: (id, updates) => {
+    return ipcRenderer.invoke("store:updateCourse", id, updates);
+  },
+  deleteCourse: (id) => {
+    return ipcRenderer.invoke("store:deleteCourse", id);
+  },
+  updateAssignment: (courseId, assignmentId, updates) => {
+    return ipcRenderer.invoke("store:updateAssignment", courseId, assignmentId, updates);
+  },
+  addAssignment: (courseId, assignment) => {
+    return ipcRenderer.invoke("store:addAssignment", courseId, assignment);
+  },
+  deleteAssignment: (courseId, assignmentId) => {
+    return ipcRenderer.invoke("store:deleteAssignment", courseId, assignmentId);
+  },
+  exportJSON: () => {
+    return ipcRenderer.invoke("store:exportJSON");
+  },
+  exportCSV: () => {
+    return ipcRenderer.invoke("store:exportCSV");
+  },
+  getExportData: () => {
+    return ipcRenderer.invoke("store:getExportData");
+  },
+  savePDF: (pdfData) => {
+    return ipcRenderer.invoke("store:savePDF", pdfData);
+  }
+});
+e:exportCSV");
+  },
+  getExportData: () => {
+    return electron.ipcRenderer.invoke("store:getExportData");
+  },
+  savePDF: (pdfData) => {
+    return electron.ipcRenderer.invoke("store:savePDF", pdfData);
+  }
+});

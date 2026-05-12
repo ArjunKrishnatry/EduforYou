@@ -178,6 +178,52 @@ contextBridge.exposeInMainWorld('electronAPI', {
   savePDF: (pdfData: ArrayBuffer): Promise<StoreResult> => {
     return ipcRenderer.invoke('store:savePDF', pdfData)
   },
+
+  // Calendar operations
+  exportICS: (): Promise<StoreResult> => {
+    return ipcRenderer.invoke('calendar:exportICS')
+  },
+
+  calendarIsConnected: (): Promise<{ connected: boolean }> => {
+    return ipcRenderer.invoke('calendar:isConnected')
+  },
+
+  calendarHasCredentials: (): Promise<{ hasCredentials: boolean; clientId: string }> => {
+    return ipcRenderer.invoke('calendar:hasCredentials')
+  },
+
+  calendarSaveCredentials: (clientId: string, clientSecret: string): Promise<StoreResult> => {
+    return ipcRenderer.invoke('calendar:saveCredentials', clientId, clientSecret)
+  },
+
+  calendarGoogleConnect: (): Promise<StoreResult> => {
+    return ipcRenderer.invoke('calendar:googleConnect')
+  },
+
+  calendarGoogleSync: (): Promise<StoreResult & { synced?: number; errors?: number }> => {
+    return ipcRenderer.invoke('calendar:googleSync')
+  },
+
+  calendarGoogleDisconnect: (): Promise<StoreResult> => {
+    return ipcRenderer.invoke('calendar:googleDisconnect')
+  },
+
+  // Notification operations
+  notificationsGetSettings: (): Promise<{ enabled: boolean; daysAhead: number }> => {
+    return ipcRenderer.invoke('notifications:getSettings')
+  },
+
+  notificationsSaveSettings: (settings: { enabled: boolean; daysAhead: number }): Promise<StoreResult> => {
+    return ipcRenderer.invoke('notifications:saveSettings', settings)
+  },
+
+  notificationsIsSupported: (): Promise<{ supported: boolean }> => {
+    return ipcRenderer.invoke('notifications:isSupported')
+  },
+
+  notificationsCheckNow: (): Promise<StoreResult> => {
+    return ipcRenderer.invoke('notifications:checkNow')
+  },
 })
 
 // Type declarations for the exposed API
@@ -214,6 +260,21 @@ declare global {
       exportCSV: () => Promise<StoreResult>
       getExportData: () => Promise<PDFExportData>
       savePDF: (pdfData: ArrayBuffer) => Promise<StoreResult>
+
+      // Calendar
+      exportICS: () => Promise<StoreResult>
+      calendarIsConnected: () => Promise<{ connected: boolean }>
+      calendarHasCredentials: () => Promise<{ hasCredentials: boolean; clientId: string }>
+      calendarSaveCredentials: (clientId: string, clientSecret: string) => Promise<StoreResult>
+      calendarGoogleConnect: () => Promise<StoreResult>
+      calendarGoogleSync: () => Promise<StoreResult & { synced?: number; errors?: number }>
+      calendarGoogleDisconnect: () => Promise<StoreResult>
+
+      // Notifications
+      notificationsGetSettings: () => Promise<{ enabled: boolean; daysAhead: number }>
+      notificationsSaveSettings: (settings: { enabled: boolean; daysAhead: number }) => Promise<StoreResult>
+      notificationsIsSupported: () => Promise<{ supported: boolean }>
+      notificationsCheckNow: () => Promise<StoreResult>
     }
   }
 }

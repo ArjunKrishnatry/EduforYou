@@ -10,12 +10,12 @@ import {
 } from 'lucide-react'
 import { useUIStore, useSemesterStore, useCourseStore } from '../../store'
 
-type View = 'dashboard' | 'add-course' | 'calendar' | 'settings'
-
 interface SidebarProps {
-  currentView: View
-  onNavigate: (view: View) => void
+  currentView: string
+  onNavigate: (view: 'dashboard' | 'add-course' | 'calendar') => void
   onOpenSettings?: () => void
+  onSelectCourse?: (courseId: string) => void
+  selectedCourseId?: string | null
 }
 
 interface NavItemProps {
@@ -46,7 +46,7 @@ function NavItem({ icon, label, isActive, collapsed, onClick }: NavItemProps) {
   )
 }
 
-export function Sidebar({ currentView, onNavigate, onOpenSettings }: SidebarProps) {
+export function Sidebar({ currentView, onNavigate, onOpenSettings, onSelectCourse, selectedCourseId }: SidebarProps) {
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
   const { semesters, currentSemesterId } = useSemesterStore()
   const { courses } = useCourseStore()
@@ -125,22 +125,30 @@ export function Sidebar({ currentView, onNavigate, onOpenSettings }: SidebarProp
               </div>
             ) : (
               <div className="space-y-1">
-                {semesterCourses.map((course) => (
-                  <button
-                    key={course.id}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                    title={course.name}
-                  >
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: course.color }}
-                    />
-                    <span className="truncate">{course.name}</span>
-                    <span className="ml-auto text-xs text-gray-400">
-                      {course.assignments.length}
-                    </span>
-                  </button>
-                ))}
+                {semesterCourses.map((course) => {
+                  const isSelected = currentView === 'course-detail' && selectedCourseId === course.id
+                  return (
+                    <button
+                      key={course.id}
+                      onClick={() => onSelectCourse?.(course.id)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
+                        isSelected
+                          ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                      }`}
+                      title={course.name}
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: course.color }}
+                      />
+                      <span className="truncate">{course.name}</span>
+                      <span className="ml-auto text-xs text-gray-400">
+                        {course.assignments.length}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>

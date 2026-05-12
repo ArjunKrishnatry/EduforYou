@@ -1,17 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Sidebar, Header, Dashboard } from './components/layout'
 import { SemesterTabs } from './components/semester/SemesterTabs'
 import { SyllabusInput } from './components/input'
 import { SettingsModal } from './components/settings'
+import { CourseDetailView, FullCalendarPage } from './components/dashboard'
+import { ToastContainer } from './components/ui/Toast'
 import { useCourseStore } from './store'
 import { COURSE_COLORS } from '../shared/types'
 
-type View = 'dashboard' | 'add-course' | 'calendar' | 'settings'
+type View = 'dashboard' | 'add-course' | 'calendar' | 'course-detail' | 'settings'
 
 export function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const { loadCourses, createCourse, courses } = useCourseStore()
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
+  const { loadCourses, createCourse, courses, getCourseById } = useCourseStore()
 
   // Load courses on mount
   useEffect(() => {
@@ -56,9 +59,48 @@ export function App() {
     }
   }
 
-  const handleOpenSettings = () => {
+  const handleOpenSettings = useCallback(() => {
     setIsSettingsOpen(true)
+  }, [])
+
+  const handleAddCourse = useCallback(() => {
+    setCurrentView('add-course')
+  }, [])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault()
+        setCurrentView('add-course')
+      } else if (e.key === ',') {
+        e.preventDefault()
+        setIsSettingsOpen(true)
+      } else if (e.key === 'Escape') {
+        if (currentView === 'course-detail' || currentView === 'add-course') {
+          setCurrentView('dashboard')
+          setSelectedCourseId(null)
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [currentView])
+
+  const handleSelectCourse = (courseId: string) => {
+    setSelectedCourseId(courseId)
+    setCurrentView('course-detail')
   }
+
+  const handleBackFromCourse = () => {
+    setSelectedCourseId(null)
+    setCurrentView('dashboard')
+  }
+
+  const selectedCourse = selectedCourseId ? getCourseById(selectedCourseId) : undefined
 
   const renderContent = () => {
     switch (currentView) {
@@ -71,9 +113,21 @@ export function App() {
             />
           </div>
         )
+      case 'calendar':
+        return <FullCalendarPage />
+      case 'course-detail':
+        if (selectedCourse) {
+          return (
+            <CourseDetailView
+              course={selectedCourse}
+              onBack={handleBackFromCourse}
+            />
+          )
+        }
+        return <Dashboard onSelectCourse={handleSelectCourse} />
       case 'dashboard':
       default:
-        return <Dashboard />
+        return <Dashboard onSelectCourse={handleSelectCourse} />
     }
   }
 
@@ -84,6 +138,8 @@ export function App() {
         currentView={currentView}
         onNavigate={setCurrentView}
         onOpenSettings={handleOpenSettings}
+        onSelectCourse={handleSelectCourse}
+        selectedCourseId={selectedCourseId}
       />
 
       {/* Main Content */}
@@ -92,6 +148,7 @@ export function App() {
         <HeaderWithNav
           currentView={currentView}
           onNavigate={setCurrentView}
+          onAddCourse={handleAddCourse}
         />
 
         {/* Semester Tabs */}
@@ -106,6 +163,9 @@ export function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
+
+      {/* Toast notifications */}
+      <ToastContainer />
     </div>
   )
 }
@@ -114,22 +174,35 @@ export function App() {
 function SidebarWithNav({
   currentView,
   onNavigate,
-  onOpenSettings
+  onOpenSettings,
+  onSelectCourse,
+  selectedCourseId
 }: {
   currentView: View
   onNavigate: (view: View) => void
   onOpenSettings: () => void
+  onSelectCourse: (courseId: string) => void
+  selectedCourseId: string | null
 }) {
-  return <Sidebar onNavigate={onNavigate} currentView={currentView} onOpenSettings={onOpenSettings} />
+  return (
+    <Sidebar
+      onNavigate={onNavigate}
+      currentView={currentView}
+      onOpenSettings={onOpenSettings}
+      onSelectCourse={onSelectCourse}
+      selectedCourseId={selectedCourseId}
+    />
+  )
 }
 
 // Extended Header with add course button
 function HeaderWithNav({
   currentView,
-  onNavigate
+  onAddCourse,
 }: {
   currentView: View
   onNavigate: (view: View) => void
+  onAddCourse: () => void
 }) {
-  return <Header onAddCourse={() => onNavigate('add-course')} currentView={currentView} />
+  return <Header onAddCourse={onAddCourse} currentView={currentView} />
 }

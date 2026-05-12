@@ -1,10 +1,8 @@
 import { Bell, Search, Plus } from 'lucide-react'
 import { useSemesterStore } from '../../store'
 
-type View = 'dashboard' | 'add-course' | 'calendar' | 'settings'
-
 interface HeaderProps {
-  currentView: View
+  currentView: string
   onAddCourse: () => void
 }
 
@@ -20,6 +18,8 @@ export function Header({ currentView, onAddCourse }: HeaderProps) {
         return 'Calendar'
       case 'settings':
         return 'Settings'
+      case 'course-detail':
+        return 'Course Details'
       default:
         return 'Dashboard'
     }

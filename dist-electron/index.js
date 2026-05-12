@@ -1,122 +1,139 @@
-import { ipcMain as a, BrowserWindow as m, dialog as S, safeStorage as v, app as f, nativeTheme as b } from "electron";
-import { extname as W, basename as _, join as g, dirname as O } from "path";
-import { fileURLToPath as j } from "url";
-import { writeFileSync as d, existsSync as h, readFileSync as C, mkdirSync as T } from "fs";
-import { readFile as I } from "fs/promises";
-import { createRequire as J } from "module";
-import L from "groq-sdk";
-const F = J(import.meta.url), Y = F("pdf-parse"), U = F("mammoth");
-async function B(e) {
-  const t = await I(e);
-  return (await Y(t)).text;
+import { ipcMain, BrowserWindow, dialog, safeStorage, app, nativeTheme } from "electron";
+import { extname, basename, join, dirname } from "path";
+import { fileURLToPath } from "url";
+import { writeFileSync, existsSync, readFileSync, mkdirSync } from "fs";
+import { readFile } from "fs/promises";
+import { createRequire } from "module";
+import Groq from "groq-sdk";
+const require$1 = createRequire(import.meta.url);
+const pdfParse = require$1("pdf-parse");
+const mammoth = require$1("mammoth");
+async function parsePDF(filePath) {
+  const buffer = await readFile(filePath);
+  const data = await pdfParse(buffer);
+  return data.text;
 }
-async function H(e) {
-  return (await U.extractRawText({ path: e })).value;
+async function parseDOCX(filePath) {
+  const result = await mammoth.extractRawText({ path: filePath });
+  return result.value;
 }
-async function z(e) {
-  return await I(e, "utf-8");
+async function parseTXT(filePath) {
+  const content = await readFile(filePath, "utf-8");
+  return content;
 }
-async function P(e) {
-  const t = W(e).toLowerCase();
-  switch (t) {
+async function parseFile(filePath) {
+  const ext = extname(filePath).toLowerCase();
+  switch (ext) {
     case ".pdf":
-      const s = await B(e), n = Math.ceil(s.length / 3e3);
-      return { text: s, pages: n };
+      const pdfText = await parsePDF(filePath);
+      const estimatedPages = Math.ceil(pdfText.length / 3e3);
+      return { text: pdfText, pages: estimatedPages };
     case ".docx":
     case ".doc":
-      return { text: await H(e) };
+      const docText = await parseDOCX(filePath);
+      return { text: docText };
     case ".txt":
     case ".md":
-      return { text: await z(e) };
+      const txtText = await parseTXT(filePath);
+      return { text: txtText };
     default:
-      throw new Error(`Unsupported file type: ${t}`);
+      throw new Error(`Unsupported file type: ${ext}`);
   }
 }
-function R(e, t = 12e3, s = 500) {
-  if (e.length <= t)
-    return [e];
-  const n = [];
-  let r = 0;
-  for (; r < e.length; ) {
-    let o = r + t;
-    if (o < e.length) {
-      const l = e.lastIndexOf(`
-
-`, o);
-      if (l > r + t / 2)
-        o = l + 2;
-      else {
-        const u = e.lastIndexOf(". ", o);
-        u > r + t / 2 && (o = u + 2);
+function chunkText(text, maxChunkSize = 12e3, overlap = 500) {
+  if (text.length <= maxChunkSize) {
+    return [text];
+  }
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = start + maxChunkSize;
+    if (end < text.length) {
+      const paragraphBreak = text.lastIndexOf("\n\n", end);
+      if (paragraphBreak > start + maxChunkSize / 2) {
+        end = paragraphBreak + 2;
+      } else {
+        const sentenceBreak = text.lastIndexOf(". ", end);
+        if (sentenceBreak > start + maxChunkSize / 2) {
+          end = sentenceBreak + 2;
+        }
       }
     }
-    n.push(e.slice(r, o)), r = o - s;
+    chunks.push(text.slice(start, end));
+    start = end - overlap;
   }
-  return n;
+  return chunks;
 }
-function G(e) {
-  return e.join(`
-
----
-
-`);
+function mergeTexts(texts) {
+  return texts.join("\n\n---\n\n");
 }
-function K() {
-  a.handle("file:select", async (e) => {
-    const t = m.fromWebContents(e.sender), s = await S.showOpenDialog(t, {
+function registerFileHandlers() {
+  ipcMain.handle("file:select", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(win, {
       properties: ["openFile", "multiSelections"],
       filters: [
         { name: "Documents", extensions: ["pdf", "docx", "doc", "txt", "md"] }
       ]
     });
-    return s.canceled || s.filePaths.length === 0 ? null : s.filePaths;
-  }), a.handle("file:parse", async (e, t) => {
-    console.log("Parsing file:", t);
-    try {
-      const { text: s, pages: n } = await P(t);
-      return console.log("Parse success:", s.length, "chars"), {
-        success: !0,
-        fileName: _(t),
-        text: s,
-        pages: n,
-        charCount: s.length
-      };
-    } catch (s) {
-      return console.error("Parse error:", s), {
-        success: !1,
-        error: s instanceof Error ? s.message : "Unknown error"
-      };
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
     }
-  }), a.handle("file:parseMultiple", async (e, t) => {
-    console.log("Parsing multiple files:", t);
+    return result.filePaths;
+  });
+  ipcMain.handle("file:parse", async (_event, filePath) => {
+    console.log("Parsing file:", filePath);
     try {
-      const s = await Promise.all(
-        t.map(async (r) => {
-          const { text: o } = await P(r);
-          return { fileName: _(r), text: o };
-        })
-      ), n = G(s.map((r) => r.text));
+      const { text, pages } = await parseFile(filePath);
+      console.log("Parse success:", text.length, "chars");
       return {
-        success: !0,
-        files: s.map((r) => r.fileName),
-        text: n,
-        charCount: n.length
+        success: true,
+        fileName: basename(filePath),
+        text,
+        pages,
+        charCount: text.length
       };
-    } catch (s) {
-      return console.error("Parse multiple error:", s), {
-        success: !1,
-        error: s instanceof Error ? s.message : "Unknown error"
+    } catch (error) {
+      console.error("Parse error:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
       };
     }
-  }), a.handle("file:chunk", async (e, t, s) => {
-    const n = R(t, s);
+  });
+  ipcMain.handle("file:parseMultiple", async (_event, filePaths) => {
+    console.log("Parsing multiple files:", filePaths);
+    try {
+      const results = await Promise.all(
+        filePaths.map(async (path) => {
+          const { text } = await parseFile(path);
+          return { fileName: basename(path), text };
+        })
+      );
+      const mergedText = mergeTexts(results.map((r) => r.text));
+      return {
+        success: true,
+        files: results.map((r) => r.fileName),
+        text: mergedText,
+        charCount: mergedText.length
+      };
+    } catch (error) {
+      console.error("Parse multiple error:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      };
+    }
+  });
+  ipcMain.handle("file:chunk", async (_event, text, maxChunkSize) => {
+    const chunks = chunkText(text, maxChunkSize);
     return {
-      chunks: n,
-      count: n.length
+      chunks,
+      count: chunks.length
     };
   });
 }
-const V = `You are an expert academic assistant that analyzes course syllabi and extracts structured information. Your task is to carefully read the provided syllabus and extract all relevant details into a structured JSON format.
+const SYLLABUS_ANALYSIS_PROMPT = `You are an expert academic assistant that analyzes course syllabi and extracts structured information. Your task is to carefully read the provided syllabus and extract all relevant details into a structured JSON format.
 
 ## Guidelines:
 1. Extract information accurately - do not infer or hallucinate details not present in the syllabus
@@ -181,7 +198,8 @@ Return ONLY valid JSON matching this structure (no markdown, no explanation, jus
   }
 }
 
-Generate 3-5 helpful preparation tips based on the course structure, workload, and requirements. These should be practical and specific to this course.`, X = `You are merging syllabus analysis results from multiple document chunks. Combine the following partial results into a single coherent analysis.
+Generate 3-5 helpful preparation tips based on the course structure, workload, and requirements. These should be practical and specific to this course.`;
+const CHUNK_MERGE_PROMPT = `You are merging syllabus analysis results from multiple document chunks. Combine the following partial results into a single coherent analysis.
 
 Rules:
 1. Merge assignments, removing exact duplicates (same title AND same date)
@@ -191,473 +209,610 @@ Rules:
 5. Flag any assignments that appear similar but might be duplicates
 
 Return the merged result as a single JSON object with the same structure.`;
-class Q {
+class GroqService {
   client;
-  constructor(t) {
-    this.client = new L({ apiKey: t });
+  constructor(apiKey) {
+    this.client = new Groq({ apiKey });
   }
-  async analyzeSyllabus(t, s) {
-    let n = "";
-    s && (n = `
+  async analyzeSyllabus(syllabusText, semesterStartDate) {
+    let contextNote = "";
+    if (semesterStartDate) {
+      contextNote = `
 
-Note: The semester starts on ${s}. Use this to calculate dates for relative references like "Week 3".`);
-    const o = (await this.client.chat.completions.create({
+Note: The semester starts on ${semesterStartDate}. Use this to calculate dates for relative references like "Week 3".`;
+    }
+    const response = await this.client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: V
+          content: SYLLABUS_ANALYSIS_PROMPT
         },
         {
           role: "user",
-          content: `Please analyze this syllabus and extract structured information:${n}
+          content: `Please analyze this syllabus and extract structured information:${contextNote}
 
-${t}`
+${syllabusText}`
         }
       ],
       temperature: 0.1,
       max_tokens: 4096,
       response_format: { type: "json_object" }
-    })).choices[0]?.message?.content;
-    if (!o)
+    });
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
       throw new Error("No response from Groq API");
+    }
     try {
-      return JSON.parse(o);
-    } catch (l) {
-      throw new Error(`Failed to parse LLM response as JSON: ${l}`);
+      return JSON.parse(content);
+    } catch (e) {
+      throw new Error(`Failed to parse LLM response as JSON: ${e}`);
     }
   }
-  async mergeChunkResults(t) {
-    if (t.length === 1)
-      return t[0];
-    const n = (await this.client.chat.completions.create({
+  async mergeChunkResults(results) {
+    if (results.length === 1) {
+      return results[0];
+    }
+    const response = await this.client.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: X
+          content: CHUNK_MERGE_PROMPT
         },
         {
           role: "user",
           content: `Merge these partial syllabus analysis results:
 
-${JSON.stringify(t, null, 2)}`
+${JSON.stringify(results, null, 2)}`
         }
       ],
       temperature: 0.1,
       max_tokens: 4096,
       response_format: { type: "json_object" }
-    })).choices[0]?.message?.content;
-    if (!n)
+    });
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
       throw new Error("No response from Groq API during merge");
-    return JSON.parse(n);
+    }
+    return JSON.parse(content);
   }
   async testConnection() {
     try {
-      return !!(await this.client.chat.completions.create({
+      const response = await this.client.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: [
           { role: "user", content: 'Say "ok" and nothing else.' }
         ],
         max_tokens: 10
-      })).choices[0]?.message?.content;
-    } catch {
-      return !1;
-    }
-  }
-}
-function x() {
-  const e = f.getPath("userData");
-  return g(e, "secure-keys.enc");
-}
-function Z(e) {
-  try {
-    if (!v.isEncryptionAvailable()) {
-      console.warn("Encryption not available, storing key in plain text");
-      const n = x();
-      return d(n, e), !0;
-    }
-    const t = v.encryptString(e), s = x();
-    return d(s, t), !0;
-  } catch (t) {
-    return console.error("Failed to save API key:", t), !1;
-  }
-}
-function $() {
-  try {
-    const e = x();
-    if (!h(e))
-      return null;
-    const t = C(e);
-    return v.isEncryptionAvailable() ? v.decryptString(t) : t.toString("utf-8");
-  } catch (e) {
-    return console.error("Failed to load API key:", e), null;
-  }
-}
-function ee() {
-  try {
-    const e = x();
-    if (h(e)) {
-      const { unlinkSync: t } = require("fs");
-      t(e);
-    }
-    return !0;
-  } catch (e) {
-    return console.error("Failed to delete API key:", e), !1;
-  }
-}
-let w = null;
-function D() {
-  if (!w) {
-    const e = $();
-    if (!e)
-      throw new Error("Groq API key not configured. Please add your API key in Settings.");
-    w = new Q(e);
-  }
-  return w;
-}
-function te() {
-  a.handle("llm:saveApiKey", async (e, t) => {
-    const s = Z(t);
-    return s && (w = null), { success: s };
-  }), a.handle("llm:hasApiKey", async () => ({ hasKey: !!$() })), a.handle("llm:deleteApiKey", async () => {
-    const e = ee();
-    return w = null, { success: e };
-  }), a.handle("llm:testConnection", async () => {
-    try {
-      const t = await D().testConnection();
-      return { success: t, error: t ? null : "Connection test failed" };
+      });
+      return !!response.choices[0]?.message?.content;
     } catch (e) {
+      return false;
+    }
+  }
+}
+function getSecureKeyPath() {
+  const userDataPath = app.getPath("userData");
+  return join(userDataPath, "secure-keys.enc");
+}
+function saveApiKey(key) {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      console.warn("Encryption not available, storing key in plain text");
+      const path2 = getSecureKeyPath();
+      writeFileSync(path2, key);
+      return true;
+    }
+    const encrypted = safeStorage.encryptString(key);
+    const path = getSecureKeyPath();
+    writeFileSync(path, encrypted);
+    return true;
+  } catch (e) {
+    console.error("Failed to save API key:", e);
+    return false;
+  }
+}
+function loadApiKey() {
+  try {
+    const path = getSecureKeyPath();
+    if (!existsSync(path)) {
+      return null;
+    }
+    const data = readFileSync(path);
+    if (!safeStorage.isEncryptionAvailable()) {
+      return data.toString("utf-8");
+    }
+    return safeStorage.decryptString(data);
+  } catch (e) {
+    console.error("Failed to load API key:", e);
+    return null;
+  }
+}
+function deleteApiKey() {
+  try {
+    const path = getSecureKeyPath();
+    if (existsSync(path)) {
+      const { unlinkSync } = require("fs");
+      unlinkSync(path);
+    }
+    return true;
+  } catch (e) {
+    console.error("Failed to delete API key:", e);
+    return false;
+  }
+}
+let groqService = null;
+function getGroqService() {
+  if (!groqService) {
+    const apiKey = loadApiKey();
+    if (!apiKey) {
+      throw new Error("Groq API key not configured. Please add your API key in Settings.");
+    }
+    groqService = new GroqService(apiKey);
+  }
+  return groqService;
+}
+function registerLLMHandlers() {
+  ipcMain.handle("llm:saveApiKey", async (_event, apiKey) => {
+    const success = saveApiKey(apiKey);
+    if (success) {
+      groqService = null;
+    }
+    return { success };
+  });
+  ipcMain.handle("llm:hasApiKey", async () => {
+    const key = loadApiKey();
+    return { hasKey: !!key };
+  });
+  ipcMain.handle("llm:deleteApiKey", async () => {
+    const success = deleteApiKey();
+    groqService = null;
+    return { success };
+  });
+  ipcMain.handle("llm:testConnection", async () => {
+    try {
+      const service = getGroqService();
+      const success = await service.testConnection();
+      return { success, error: success ? null : "Connection test failed" };
+    } catch (error) {
       return {
-        success: !1,
-        error: e instanceof Error ? e.message : "Unknown error"
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
       };
     }
-  }), a.handle(
+  });
+  ipcMain.handle(
     "llm:analyze",
-    async (e, t, s) => {
+    async (_event, syllabusText, options) => {
       console.log("Starting syllabus analysis...");
       try {
-        const n = D(), r = R(t, 1e4, 500);
-        console.log(`Text split into ${r.length} chunk(s)`);
-        let o;
-        if (r.length === 1)
-          o = await n.analyzeSyllabus(r[0], s.semesterStartDate);
-        else {
-          const l = [];
-          for (let u = 0; u < r.length; u++) {
-            console.log(`Analyzing chunk ${u + 1}/${r.length}...`);
-            const q = await n.analyzeSyllabus(
-              r[u],
-              s.semesterStartDate
+        const service = getGroqService();
+        const chunks = chunkText(syllabusText, 1e4, 500);
+        console.log(`Text split into ${chunks.length} chunk(s)`);
+        let result;
+        if (chunks.length === 1) {
+          result = await service.analyzeSyllabus(chunks[0], options.semesterStartDate);
+        } else {
+          const chunkResults = [];
+          for (let i = 0; i < chunks.length; i++) {
+            console.log(`Analyzing chunk ${i + 1}/${chunks.length}...`);
+            const chunkResult = await service.analyzeSyllabus(
+              chunks[i],
+              options.semesterStartDate
             );
-            l.push(q);
+            chunkResults.push(chunkResult);
           }
-          console.log("Merging chunk results..."), o = await n.mergeChunkResults(l);
+          console.log("Merging chunk results...");
+          result = await service.mergeChunkResults(chunkResults);
         }
-        return s.courseName && (o.courseName = s.courseName), console.log("Analysis complete:", {
-          courseName: o.courseName,
-          assignments: o.assignments?.length || 0,
-          materials: o.materials?.length || 0
-        }), {
-          success: !0,
-          data: o
+        if (options.courseName) {
+          result.courseName = options.courseName;
+        }
+        console.log("Analysis complete:", {
+          courseName: result.courseName,
+          assignments: result.assignments?.length || 0,
+          materials: result.materials?.length || 0
+        });
+        return {
+          success: true,
+          data: result
         };
-      } catch (n) {
-        return console.error("Analysis failed:", n), {
-          success: !1,
-          error: n instanceof Error ? n.message : "Analysis failed"
+      } catch (error) {
+        console.error("Analysis failed:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Analysis failed"
         };
       }
     }
   );
 }
-const y = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-function k() {
-  const e = f.getPath("userData");
-  return g(e, "courses.json");
+const generateId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+function getCoursesPath() {
+  const userDataPath = app.getPath("userData");
+  return join(userDataPath, "courses.json");
 }
-function ne() {
-  const e = k(), t = g(e, "..");
-  h(t) || T(t, { recursive: !0 });
+function ensureDirectory() {
+  const path = getCoursesPath();
+  const dir = join(path, "..");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
 }
-function c() {
+function loadCourses() {
   try {
-    const e = k();
-    if (h(e)) {
-      const t = C(e, "utf-8");
-      return JSON.parse(t);
+    const path = getCoursesPath();
+    if (existsSync(path)) {
+      const data = readFileSync(path, "utf-8");
+      return JSON.parse(data);
     }
   } catch (e) {
     console.error("Failed to load courses:", e);
   }
   return [];
 }
-function p(e) {
+function saveCourses(courses) {
   try {
-    ne();
-    const t = k();
-    d(t, JSON.stringify(e, null, 2));
-  } catch (t) {
-    console.error("Failed to save courses:", t);
+    ensureDirectory();
+    const path = getCoursesPath();
+    writeFileSync(path, JSON.stringify(courses, null, 2));
+  } catch (e) {
+    console.error("Failed to save courses:", e);
   }
 }
-function se(e) {
-  const t = c(), s = {
-    ...e,
-    id: `course_${y()}`,
+function createCourse(courseData) {
+  const courses = loadCourses();
+  const newCourse = {
+    ...courseData,
+    id: `course_${generateId()}`,
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
     // Ensure assignments have IDs
-    assignments: (e.assignments || []).map((n) => ({
-      ...n,
-      id: n.id || `assign_${y()}`,
-      isCompleted: n.isCompleted || !1
+    assignments: (courseData.assignments || []).map((a) => ({
+      ...a,
+      id: a.id || `assign_${generateId()}`,
+      isCompleted: a.isCompleted || false
     })),
     // Ensure materials have IDs
-    materials: (e.materials || []).map((n) => ({
-      ...n,
-      id: n.id || `mat_${y()}`
+    materials: (courseData.materials || []).map((m) => ({
+      ...m,
+      id: m.id || `mat_${generateId()}`
     })),
     // Ensure prep tips have IDs
-    prepTips: (e.prepTips || []).map((n) => ({
-      ...n,
-      id: n.id || `tip_${y()}`
+    prepTips: (courseData.prepTips || []).map((p) => ({
+      ...p,
+      id: p.id || `tip_${generateId()}`
     }))
   };
-  return t.push(s), p(t), s;
+  courses.push(newCourse);
+  saveCourses(courses);
+  return newCourse;
 }
-function re(e, t) {
-  const s = c(), n = s.findIndex((r) => r.id === e);
-  return n === -1 ? null : (s[n] = {
-    ...s[n],
-    ...t,
+function updateCourse(id, updates) {
+  const courses = loadCourses();
+  const index = courses.findIndex((c) => c.id === id);
+  if (index === -1) return null;
+  courses[index] = {
+    ...courses[index],
+    ...updates,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-  }, p(s), s[n]);
-}
-function oe(e) {
-  const t = c(), s = t.filter((n) => n.id !== e);
-  return s.length === t.length ? !1 : (p(s), !0);
-}
-function ae(e) {
-  return c().find((s) => s.id === e) || null;
-}
-function ie(e) {
-  return c().filter((s) => s.semesterId === e);
-}
-function ce(e, t, s) {
-  const n = c(), r = n.find((l) => l.id === e);
-  if (!r) return null;
-  const o = r.assignments.findIndex((l) => l.id === t);
-  return o === -1 ? null : (r.assignments[o] = {
-    ...r.assignments[o],
-    ...s
-  }, r.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), p(n), r.assignments[o]);
-}
-function le(e, t) {
-  const s = c(), n = s.find((o) => o.id === e);
-  if (!n) return null;
-  const r = {
-    ...t,
-    id: `assign_${y()}`,
-    isCompleted: t.isCompleted || !1
   };
-  return n.assignments.push(r), n.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), p(s), r;
+  saveCourses(courses);
+  return courses[index];
 }
-function ue(e, t) {
-  const s = c(), n = s.find((o) => o.id === e);
-  if (!n) return !1;
-  const r = n.assignments.length;
-  return n.assignments = n.assignments.filter((o) => o.id !== t), n.assignments.length === r ? !1 : (n.updatedAt = (/* @__PURE__ */ new Date()).toISOString(), p(s), !0);
+function deleteCourse(id) {
+  const courses = loadCourses();
+  const filtered = courses.filter((c) => c.id !== id);
+  if (filtered.length === courses.length) return false;
+  saveCourses(filtered);
+  return true;
 }
-function de() {
-  const e = c();
-  return JSON.stringify(e, null, 2);
+function getCourse(id) {
+  const courses = loadCourses();
+  return courses.find((c) => c.id === id) || null;
 }
-function fe() {
-  const e = c(), t = [];
-  t.push("Course,Assignment,Type,Due Date,Weight,Completed,Grade");
-  for (const s of e)
-    for (const n of s.assignments)
-      t.push([
-        `"${s.name.replace(/"/g, '""')}"`,
-        `"${n.title.replace(/"/g, '""')}"`,
-        n.type,
-        n.dueDate || n.dueDateRaw || "",
-        n.weight?.toString() || "",
-        n.isCompleted ? "Yes" : "No",
-        n.gradeReceived?.toString() || ""
+function getCoursesBySemester(semesterId) {
+  const courses = loadCourses();
+  return courses.filter((c) => c.semesterId === semesterId);
+}
+function updateAssignment(courseId, assignmentId, updates) {
+  const courses = loadCourses();
+  const course = courses.find((c) => c.id === courseId);
+  if (!course) return null;
+  const assignmentIndex = course.assignments.findIndex((a) => a.id === assignmentId);
+  if (assignmentIndex === -1) return null;
+  course.assignments[assignmentIndex] = {
+    ...course.assignments[assignmentIndex],
+    ...updates
+  };
+  course.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  saveCourses(courses);
+  return course.assignments[assignmentIndex];
+}
+function addAssignment(courseId, assignment) {
+  const courses = loadCourses();
+  const course = courses.find((c) => c.id === courseId);
+  if (!course) return null;
+  const newAssignment = {
+    ...assignment,
+    id: `assign_${generateId()}`,
+    isCompleted: assignment.isCompleted || false
+  };
+  course.assignments.push(newAssignment);
+  course.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  saveCourses(courses);
+  return newAssignment;
+}
+function deleteAssignment(courseId, assignmentId) {
+  const courses = loadCourses();
+  const course = courses.find((c) => c.id === courseId);
+  if (!course) return false;
+  const initialLength = course.assignments.length;
+  course.assignments = course.assignments.filter((a) => a.id !== assignmentId);
+  if (course.assignments.length === initialLength) return false;
+  course.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  saveCourses(courses);
+  return true;
+}
+function exportToJSON() {
+  const courses = loadCourses();
+  return JSON.stringify(courses, null, 2);
+}
+function exportToCSV() {
+  const courses = loadCourses();
+  const rows = [];
+  rows.push("Course,Assignment,Type,Due Date,Weight,Completed,Grade");
+  for (const course of courses) {
+    for (const assignment of course.assignments) {
+      rows.push([
+        `"${course.name.replace(/"/g, '""')}"`,
+        `"${assignment.title.replace(/"/g, '""')}"`,
+        assignment.type,
+        assignment.dueDate || assignment.dueDateRaw || "",
+        assignment.weight?.toString() || "",
+        assignment.isCompleted ? "Yes" : "No",
+        assignment.gradeReceived?.toString() || ""
       ].join(","));
-  return t.join(`
-`);
+    }
+  }
+  return rows.join("\n");
 }
-function me() {
+function getExportData() {
   return {
-    courses: c(),
+    courses: loadCourses(),
     generatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
-function ge() {
-  a.handle("store:getCourses", async () => c()), a.handle("store:getCoursesBySemester", async (e, t) => ie(t)), a.handle("store:getCourse", async (e, t) => ae(t)), a.handle("store:createCourse", async (e, t) => {
+function registerStoreHandlers() {
+  ipcMain.handle("store:getCourses", async () => {
+    return loadCourses();
+  });
+  ipcMain.handle("store:getCoursesBySemester", async (_event, semesterId) => {
+    return getCoursesBySemester(semesterId);
+  });
+  ipcMain.handle("store:getCourse", async (_event, id) => {
+    return getCourse(id);
+  });
+  ipcMain.handle("store:createCourse", async (_event, courseData) => {
     try {
-      return { success: !0, course: se(t) };
-    } catch (s) {
+      const course = createCourse(courseData);
+      return { success: true, course };
+    } catch (error) {
       return {
-        success: !1,
-        error: s instanceof Error ? s.message : "Failed to create course"
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to create course"
       };
     }
-  }), a.handle("store:updateCourse", async (e, t, s) => {
+  });
+  ipcMain.handle("store:updateCourse", async (_event, id, updates) => {
     try {
-      const n = re(t, s);
-      return n ? { success: !0, course: n } : { success: !1, error: "Course not found" };
-    } catch (n) {
+      const course = updateCourse(id, updates);
+      if (!course) {
+        return { success: false, error: "Course not found" };
+      }
+      return { success: true, course };
+    } catch (error) {
       return {
-        success: !1,
-        error: n instanceof Error ? n.message : "Failed to update course"
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update course"
       };
     }
-  }), a.handle("store:deleteCourse", async (e, t) => ({ success: oe(t) })), a.handle(
+  });
+  ipcMain.handle("store:deleteCourse", async (_event, id) => {
+    const success = deleteCourse(id);
+    return { success };
+  });
+  ipcMain.handle(
     "store:updateAssignment",
-    async (e, t, s, n) => {
+    async (_event, courseId, assignmentId, updates) => {
       try {
-        const r = ce(t, s, n);
-        return r ? { success: !0, assignment: r } : { success: !1, error: "Assignment not found" };
-      } catch (r) {
+        const assignment = updateAssignment(courseId, assignmentId, updates);
+        if (!assignment) {
+          return { success: false, error: "Assignment not found" };
+        }
+        return { success: true, assignment };
+      } catch (error) {
         return {
-          success: !1,
-          error: r instanceof Error ? r.message : "Failed to update assignment"
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to update assignment"
         };
       }
     }
-  ), a.handle(
+  );
+  ipcMain.handle(
     "store:addAssignment",
-    async (e, t, s) => {
+    async (_event, courseId, assignment) => {
       try {
-        const n = le(t, s);
-        return n ? { success: !0, assignment: n } : { success: !1, error: "Course not found" };
-      } catch (n) {
+        const newAssignment = addAssignment(courseId, assignment);
+        if (!newAssignment) {
+          return { success: false, error: "Course not found" };
+        }
+        return { success: true, assignment: newAssignment };
+      } catch (error) {
         return {
-          success: !1,
-          error: n instanceof Error ? n.message : "Failed to add assignment"
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to add assignment"
         };
       }
     }
-  ), a.handle("store:deleteAssignment", async (e, t, s) => ({ success: ue(t, s) })), a.handle("store:exportJSON", async (e) => {
-    const t = m.fromWebContents(e.sender), s = await S.showSaveDialog(t, {
+  );
+  ipcMain.handle("store:deleteAssignment", async (_event, courseId, assignmentId) => {
+    const success = deleteAssignment(courseId, assignmentId);
+    return { success };
+  });
+  ipcMain.handle("store:exportJSON", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showSaveDialog(win, {
       defaultPath: "syllabus-export.json",
       filters: [{ name: "JSON", extensions: ["json"] }]
     });
-    if (s.canceled || !s.filePath)
-      return { success: !1, canceled: !0 };
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
     try {
-      const n = de();
-      return d(s.filePath, n), { success: !0, path: s.filePath };
-    } catch (n) {
+      const json = exportToJSON();
+      writeFileSync(result.filePath, json);
+      return { success: true, path: result.filePath };
+    } catch (error) {
       return {
-        success: !1,
-        error: n instanceof Error ? n.message : "Export failed"
+        success: false,
+        error: error instanceof Error ? error.message : "Export failed"
       };
     }
-  }), a.handle("store:exportCSV", async (e) => {
-    const t = m.fromWebContents(e.sender), s = await S.showSaveDialog(t, {
+  });
+  ipcMain.handle("store:exportCSV", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showSaveDialog(win, {
       defaultPath: "syllabus-export.csv",
       filters: [{ name: "CSV", extensions: ["csv"] }]
     });
-    if (s.canceled || !s.filePath)
-      return { success: !1, canceled: !0 };
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
     try {
-      const n = fe();
-      return d(s.filePath, n), { success: !0, path: s.filePath };
-    } catch (n) {
+      const csv = exportToCSV();
+      writeFileSync(result.filePath, csv);
+      return { success: true, path: result.filePath };
+    } catch (error) {
       return {
-        success: !1,
-        error: n instanceof Error ? n.message : "Export failed"
+        success: false,
+        error: error instanceof Error ? error.message : "Export failed"
       };
     }
-  }), a.handle("store:getExportData", async () => me()), a.handle("store:savePDF", async (e, t) => {
-    const s = m.fromWebContents(e.sender), n = await S.showSaveDialog(s, {
+  });
+  ipcMain.handle("store:getExportData", async () => {
+    return getExportData();
+  });
+  ipcMain.handle("store:savePDF", async (event, pdfData) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showSaveDialog(win, {
       defaultPath: "syllabus-report.pdf",
       filters: [{ name: "PDF", extensions: ["pdf"] }]
     });
-    if (n.canceled || !n.filePath)
-      return { success: !1, canceled: !0 };
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
     try {
-      return d(n.filePath, Buffer.from(t)), { success: !0, path: n.filePath };
-    } catch (r) {
+      writeFileSync(result.filePath, Buffer.from(pdfData));
+      return { success: true, path: result.filePath };
+    } catch (error) {
       return {
-        success: !1,
-        error: r instanceof Error ? r.message : "Export failed"
+        success: false,
+        error: error instanceof Error ? error.message : "Export failed"
       };
     }
   });
 }
-function he() {
-  K(), te(), ge();
+function registerAllHandlers() {
+  registerFileHandlers();
+  registerLLMHandlers();
+  registerStoreHandlers();
 }
-const pe = j(import.meta.url), A = O(pe);
-function M() {
-  const e = f.getPath("userData");
-  return g(e, "window-state.json");
+const __filename$1 = fileURLToPath(import.meta.url);
+const __dirname$1 = dirname(__filename$1);
+function getStorePath() {
+  const userDataPath = app.getPath("userData");
+  return join(userDataPath, "window-state.json");
 }
-function ye() {
+function loadWindowBounds() {
   try {
-    const e = M();
-    if (h(e)) {
-      const t = C(e, "utf-8");
-      return JSON.parse(t);
+    const path = getStorePath();
+    if (existsSync(path)) {
+      const data = readFileSync(path, "utf-8");
+      return JSON.parse(data);
     }
   } catch (e) {
     console.error("Failed to load window bounds:", e);
   }
   return { width: 1200, height: 800 };
 }
-function we(e) {
+function saveWindowBoundsToFile(bounds) {
   try {
-    const t = M(), s = O(t);
-    h(s) || T(s, { recursive: !0 }), d(t, JSON.stringify(e, null, 2));
-  } catch (t) {
-    console.error("Failed to save window bounds:", t);
+    const path = getStorePath();
+    const dir = dirname(path);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(path, JSON.stringify(bounds, null, 2));
+  } catch (e) {
+    console.error("Failed to save window bounds:", e);
   }
 }
-let i = null;
-function E() {
-  const { width: e, height: t, x: s, y: n } = ye();
-  i = new m({
-    width: e,
-    height: t,
-    x: s,
-    y: n,
+let mainWindow = null;
+function createWindow() {
+  const { width, height, x, y } = loadWindowBounds();
+  mainWindow = new BrowserWindow({
+    width,
+    height,
+    x,
+    y,
     minWidth: 900,
     minHeight: 600,
     webPreferences: {
-      preload: g(A, "preload.js"),
-      contextIsolation: !0,
-      nodeIntegration: !1
+      preload: join(__dirname$1, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
     },
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    backgroundColor: b.shouldUseDarkColors ? "#1e1e1e" : "#ffffff",
-    show: !1
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#ffffff",
+    show: false
     // Don't show until ready
-  }), i.on("resize", N), i.on("move", N), i.once("ready-to-show", () => {
-    i?.show();
-  }), i.on("closed", () => {
-    i = null;
-  }), process.env.VITE_DEV_SERVER_URL ? (i.loadURL(process.env.VITE_DEV_SERVER_URL), i.webContents.openDevTools()) : i.loadFile(g(A, "../dist/index.html"));
+  });
+  mainWindow.on("resize", saveWindowBounds);
+  mainWindow.on("move", saveWindowBounds);
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+  });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+  if (process.env.VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(join(__dirname$1, "../dist/index.html"));
+  }
 }
-function N() {
-  if (!i) return;
-  const e = i.getBounds();
-  we(e);
+function saveWindowBounds() {
+  if (!mainWindow) return;
+  const bounds = mainWindow.getBounds();
+  saveWindowBoundsToFile(bounds);
 }
-f.whenReady().then(() => {
-  he(), E(), f.on("activate", () => {
-    m.getAllWindows().length === 0 && E();
+app.whenReady().then(() => {
+  registerAllHandlers();
+  createWindow();
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
   });
 });
-f.on("window-all-closed", () => {
-  process.platform !== "darwin" && f.quit();
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });
-b.on("updated", () => {
-  i?.webContents.send("theme-changed", b.shouldUseDarkColors);
+nativeTheme.on("updated", () => {
+  mainWindow?.webContents.send("theme-changed", nativeTheme.shouldUseDarkColors);
 });
